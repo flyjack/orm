@@ -5,7 +5,7 @@
 ## How to use?
 
 ### Insert 
-go get github.com/ablegao/orm
+go get github.com/server-nado/orm
 
 
 
@@ -18,7 +18,7 @@ postgree "github.com/lib/pq"
 ##数据库Model 建立方法
 
     //引用模块
-    import "github.com/ablegao/orm"
+    import "github.com/server-nado/orm"
 
     //mysql 驱动
     import _ "github.com/go-sql-driver/mysql"
@@ -41,7 +41,7 @@ postgree "github.com/lib/pq"
 
 ##新增 CacheModel 模型， 支持分布式redis作为数据库缓存。 
 
-	import "github.com/ablegao/orm"
+	import "github.com/server-nado/orm"
 	import _ "github.com/go-sql-driver/mysql"
 
 	type userB struct {
