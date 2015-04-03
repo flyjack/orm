@@ -111,7 +111,9 @@ func (self *Params) Init() {
 	self.fields = self.fields[len(self.fields):]
 	self.order = self.order[len(self.order):]
 }
-
+func (self *Params) Existed() {
+	self.hasRow = true
+}
 func (self *Params) SetTable(tbname string) {
 	self.tbname = tbname
 

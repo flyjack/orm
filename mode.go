@@ -205,8 +205,9 @@ func (self *Object) Save() (bool, int64, error) {
 	self.Lock()
 	defer self.Unlock()
 	valus := reflect.ValueOf(self.mode).Elem()
+	fieldNum := valus.NumField()
 	if len(self.Params.set) == 0 {
-		for i := 0; i < valus.NumField(); i++ {
+		for i := 0; i < fieldNum; i++ {
 			typ := valus.Type().Field(i)
 			val := valus.Field(i)
 			if self.hasRow {
@@ -223,6 +224,21 @@ func (self *Object) Save() (bool, int64, error) {
 
 	self.autoWhere()
 	isNew, id, err := self.Params.Save()
+
+	if isNew && err == nil {
+		for i := 0; i < fieldNum; i++ {
+			typ := valus.Type().Field(i)
+			val := valus.Field(i)
+			if typ.Tag.Get("index") == "pk" {
+				switch val.Kind() {
+				case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+					val.SetUint(uint64(id))
+				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+					val.SetInt(id)
+				}
+			}
+		}
+	}
 	return isNew, id, err
 }
 
@@ -282,7 +298,6 @@ func (self *Object) All() ([]interface{}, error) {
 					val = append(val, m.Field(i).Addr().Interface())
 				}
 			}
-
 			rows.Scan(val...)
 			ret = append(ret, m.Addr().Interface())
 		}

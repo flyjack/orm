@@ -251,12 +251,12 @@ func (self *CacheModule) Set(key string, val interface{}) (err error) {
 }
 
 func (self *CacheModule) Save() (isnew bool, id int64, err error) {
-
+	isnew, id, err = self.Object.Save()
 	key := self.GetCacheKey()
 	if i, err := self.Exists(key); err == nil && i == false {
 		self.SaveToCache()
 	}
-	return self.Object.Save()
+	return
 }
 
 func (self *CacheModule) Filter(name string, val interface{}) *CacheModule {
