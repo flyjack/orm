@@ -111,9 +111,7 @@ func (self *Params) Init() {
 	self.fields = self.fields[len(self.fields):]
 	self.order = self.order[len(self.order):]
 }
-func (self *Params) Existed() {
-	self.hasRow = true
-}
+
 func (self *Params) SetTable(tbname string) {
 	self.tbname = tbname
 
@@ -170,10 +168,11 @@ func (self *Params) One(vals ...interface{}) error {
 	//	self.stmt, err = self.db.Prepare()
 	if db, ok := databases[self.connname]; ok {
 		sqls, val := driversql[db.DriverName](self).Select()
-		if debug_sql {
-			Debug.Println("select One ", sqls, val)
-		}
+
 		err := db.QueryRow(sqls, val...).Scan(vals...)
+		if debug_sql {
+			Debug.Println("select One ", sqls, val, err)
+		}
 		switch {
 		case err == sql.ErrNoRows:
 			return err

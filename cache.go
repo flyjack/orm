@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-var Debug = log.New(os.Stdout, "ORM-DEBUG", log.Lshortfile|log.LstdFlags)
-var Error = log.New(os.Stdout, "ORM-ERROR", log.Lshortfile|log.LstdFlags)
+var Debug = log.New(os.Stdout, "ORM-DEBUG ", log.Lshortfile|log.LstdFlags)
+var Error = log.New(os.Stdout, "ORM-ERROR ", log.Lshortfile|log.LstdFlags)
 var cache_prefix []byte = []byte("nado")
 var cache_db = 0
 var st []byte = []byte("*")
@@ -112,7 +112,11 @@ func (self *CacheModule) Objects(mode Module) *CacheModule {
 		}
 
 	}
-	self.Cache = GetRedisClient("default")
+	redis := GetRedisClient("default")
+	self.Cache = redis
+	if debug_sql {
+		Debug.Println("CacheModule.Objects  redis ", redis.Addr, self.where)
+	}
 	return self
 }
 
@@ -144,6 +148,9 @@ func GetCacheConn(key interface{}) (address string, c Cache) {
 
 func (self *CacheModule) Ca(key interface{}) *CacheModule {
 	self.cache_address, self.Cache = GetCacheConn(key)
+	if debug_sql {
+		Debug.Println("Change cache address  redis ", self.cache_address)
+	}
 	return self
 }
 
@@ -397,16 +404,17 @@ func (self *CacheModule) One() error {
 
 	if err := self.OneOnCache(); err != nil {
 		//return errors.New("key " + key + " not exists!")
-		if debug_sql {
-			Debug.Println("key ", self.cachekey, "error", err)
-		}
 		err = self.Object.One()
 		if err == nil {
-			defer self.SaveToCache()
+			err = self.SaveToCache() //self.saveToCache(self.mode)
 		} else {
 			Error.Println(err)
 		}
 		return err
+	} else {
+		if debug_sql {
+			Debug.Println("内存命中", self.cachekey)
+		}
 	}
 	return nil
 }
@@ -528,6 +536,9 @@ func (self *CacheModule) key2Mode(key string) interface{} {
 			}
 		}
 	}
+	mode := CacheModule{}
+	mode.Objects(val.Addr().Interface().(Module)).Existed()
+	val.FieldByName("CacheModule").Set(reflect.ValueOf(mode))
 	return val.Addr().Interface()
 }
 func (self CacheModule) saveToCache(mode Module) error {
@@ -562,5 +573,10 @@ func (self *CacheModule) SaveToCache() error {
 			}
 		}
 	}
-	return self.Hmset(key, maping)
+
+	err := self.Cache.Hmset(key, maping)
+	if debug_sql {
+		Debug.Println("转储倒内存", key, maping, err, self.Cache)
+	}
+	return err
 }

@@ -46,6 +46,7 @@ func (self *Object) Objects(mode Module) *Object {
 
 	typ := reflect.TypeOf(mode).Elem()
 	vals := []string{}
+
 	for i := 0; i < typ.NumField(); i++ {
 		if field := typ.Field(i).Tag.Get("field"); len(field) > 0 {
 			vals = append(vals, field)
@@ -53,6 +54,10 @@ func (self *Object) Objects(mode Module) *Object {
 	}
 	self.SetField(vals...)
 	self.mode = mode
+	return self
+}
+func (self *Object) Existed() *Object {
+	self.hasRow = true
 	return self
 }
 
@@ -224,7 +229,6 @@ func (self *Object) Save() (bool, int64, error) {
 
 	self.autoWhere()
 	isNew, id, err := self.Params.Save()
-
 	if isNew && err == nil {
 		for i := 0; i < fieldNum; i++ {
 			typ := valus.Type().Field(i)
@@ -293,12 +297,21 @@ func (self *Object) All() ([]interface{}, error) {
 		for rows.Next() {
 			m := reflect.New(reflect.TypeOf(self.mode).Elem()).Elem()
 			val = val[len(val):]
+
 			for i := 0; i < m.NumField(); i++ {
 				if name := m.Type().Field(i).Tag.Get("field"); len(name) > 0 {
 					val = append(val, m.Field(i).Addr().Interface())
 				}
 			}
-			rows.Scan(val...)
+			err = rows.Scan(val...)
+			if err != nil {
+				return nil, err
+			}
+			//m.Field(0).MethodByName("Objects").Call([]reflect.Value{m.Addr()})
+			obj := Object{} //Object(m.Interface().(Module))
+			obj.Objects(m.Addr().Interface().(Module)).Existed()
+			m.FieldByName("Object").Set(reflect.ValueOf(obj))
+
 			ret = append(ret, m.Addr().Interface())
 		}
 		return ret, err
@@ -329,4 +342,11 @@ func (self *Object) One() error {
 	} else {
 		return err
 	}
+}
+
+func (self *Object) Field(name string) reflect.Value {
+	self.RLock()
+	defer self.RUnlock()
+	valMode := reflect.ValueOf(self.mode).Elem()
+	return valMode.FieldByName(name)
 }
