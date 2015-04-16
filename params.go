@@ -9,6 +9,16 @@ import (
 var NULL_LIMIT = [2]int{0, 0}
 var databases = map[string]*Database{}
 
+//读写数据库名称
+var readDbConnectName, writeDbConnectName string = "default", "default"
+
+func SetReadConnectName(name string) {
+	readDbConnectName = name
+}
+func SetWriteConnectName(name string) {
+	writeDbConnectName = name
+}
+
 type Database struct {
 	*sql.DB
 	Name           string
@@ -100,9 +110,7 @@ func (self Params) GetLimit() [2]int {
 	return self.limit
 }
 func (self *Params) Init() {
-	if len(self.connname) == 0 {
-		self.connname = "default"
-	}
+	self.connname = ""
 	self.hasRow = false
 	self.where = self.where[len(self.where):]
 	self.or = self.or[len(self.or):]
@@ -139,99 +147,112 @@ func (self *Params) Limit(page, step int) *Params {
 	self.limit[1] = step
 	return self
 }
-func (self *Params) All() (rows *sql.Rows, err error) {
-	//rows, err = self.db.Query(self.execSelect())
-	//	self.stmt, err = self.db.Prepare()
-	if db, ok := databases[self.connname]; !ok {
-		panic("Database " + self.connname + " not defined.")
-		return
-	} else {
 
-		sqls, val := driversql[db.DriverName](*self).Select()
-		if debug_sql {
-			Debug.Println("select all ", sqls, val)
-		}
-		rows, err = db.Query(sqls, val...)
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	return
-}
 func (self *Params) Db(name string) *Params {
 	self.connname = name
 	return self
 }
+
+func (self *Params) getReadConnect() (*Database, ModuleToSql) {
+	db_connect_name := readDbConnectName
+	if self.connname != "" {
+		db_connect_name = self.connname
+	}
+	if db, ok := databases[db_connect_name]; ok {
+		return db, driversql[db.DriverName](*self)
+
+	} else {
+		panic("database name '" + db_connect_name + "' not exists!")
+	}
+}
+func (self *Params) getWriteConnect() (*Database, ModuleToSql) {
+	db_connect_name := writeDbConnectName
+	if self.connname != "" {
+		db_connect_name = self.connname
+	}
+	if db, ok := databases[db_connect_name]; ok {
+		return db, driversql[db.DriverName](*self)
+	} else {
+		panic("database name '" + db_connect_name + "' not exists!")
+	}
+}
+
+func (self *Params) All() (rows *sql.Rows, err error) {
+	//rows, err = self.db.Query(self.execSelect())
+	//	self.stmt, err = self.db.Prepare()
+	db, query := self.getReadConnect()
+	sqls, val := query.Select()
+	if debug_sql {
+		Debug.Println("select all ", sqls, val)
+	}
+	rows, err = db.Query(sqls, val...)
+	if err != nil {
+		panic(err)
+	}
+
+	return
+}
+
 func (self *Params) One(vals ...interface{}) error {
 	//rows, err = self.db.Query(self.execSelect())
 	//	self.stmt, err = self.db.Prepare()
-	if db, ok := databases[self.connname]; ok {
-		sqls, val := driversql[db.DriverName](self).Select()
-
-		err := db.QueryRow(sqls, val...).Scan(vals...)
-		if debug_sql {
-			Debug.Println("select One ", sqls, val, err)
-		}
-		switch {
-		case err == sql.ErrNoRows:
-			return err
-		case err != nil:
-			return err
-		default:
-			self.hasRow = true
-		}
+	db, query := self.getReadConnect()
+	sqls, val := query.Select()
+	err := db.QueryRow(sqls, val...).Scan(vals...)
+	if debug_sql {
+		Debug.Println("select One ", sqls, val, err)
 	}
+	switch {
+	case err == sql.ErrNoRows:
+		return err
+	case err != nil:
+		return err
+	default:
+		self.hasRow = true
+	}
+
 	return nil
 }
 func (self *Params) Delete() (res sql.Result, err error) {
 	var stmt *sql.Stmt
-	if db, ok := databases[self.connname]; ok {
-
-		sqls, val := driversql[db.DriverName](*self).Delete()
-		if debug_sql {
-			Debug.Println("delete  ", sqls, val)
-		}
-		stmt, err = db.Prepare(sqls)
-		if err == nil {
-			defer stmt.Close()
-		}
-		res, err = stmt.Exec(val...)
-		if err != nil {
-			panic(err)
-		}
-	} else {
-		panic("Database " + self.connname + " not defined.")
+	db, query := self.getWriteConnect()
+	sqls, val := query.Delete()
+	if debug_sql {
+		Debug.Println("delete  ", sqls, val)
 	}
+	stmt, err = db.Prepare(sqls)
+	if err == nil {
+		defer stmt.Close()
+	}
+	res, err = stmt.Exec(val...)
+	if err != nil {
+		panic(err)
+	}
+
 	return
 }
 
 func (self *Params) Count() (int64, error) {
-	if db, ok := databases[self.connname]; ok {
-		sqls, val := driversql[db.DriverName](*self).Count()
-		if debug_sql {
-			Debug.Println("count  ", sqls, val)
-		}
-		row := db.QueryRow(sqls, val...)
+	db, query := self.getReadConnect()
 
-		var c int64
-		if err := row.Scan(&c); err == nil {
-			return c, nil
-		} else {
-			return 0, err
-		}
+	sqls, val := query.Count()
+	if debug_sql {
+		Debug.Println("count  ", sqls, val)
+	}
+	row := db.QueryRow(sqls, val...)
+
+	var c int64
+	if err := row.Scan(&c); err == nil {
+		return c, nil
 	} else {
-		panic("Database " + self.connname + " not defined.")
+		return 0, err
 	}
 
 	return 0, nil
 }
 
 func (self *Params) Save() (bool, int64, error) {
-	db, ok := databases[self.connname]
-	if !ok {
-		panic("Database " + self.connname + " not defined.")
-	}
+	db, query := self.getWriteConnect()
 	defer func() {
 		self.set = self.set[len(self.set):]
 	}()
@@ -241,7 +262,7 @@ func (self *Params) Save() (bool, int64, error) {
 	//var n int64
 	//if n , err= self.Count();err == nil && n >0
 	if self.hasRow {
-		sqls, val := driversql[db.DriverName](*self).Update()
+		sqls, val := query.Update()
 		if debug_sql {
 			Debug.Println("save update ", sqls, val)
 		}
@@ -259,7 +280,7 @@ func (self *Params) Save() (bool, int64, error) {
 		a, b := res.RowsAffected()
 		return false, a, b
 	} else {
-		sqls, val := driversql[db.DriverName](*self).Insert()
+		sqls, val := query.Insert()
 		if debug_sql {
 			Debug.Println("save insert ", sqls, val)
 		}
