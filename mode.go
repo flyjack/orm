@@ -284,15 +284,18 @@ func (self *Object) autoWhere() {
 }
 
 //查找数据
-func (self *Object) All() ([]interface{}, error) {
+func (self *Object) All(out interface{}) error {
 	self.Lock()
 	defer self.Unlock()
+	if out == nil {
+		return errors.New("params can't nil ")
+	}
 	self.autoWhere()
 	if rows, err := self.Params.All(); err == nil {
 		defer rows.Close()
 
-		ret := []interface{}{}
 		val := []interface{}{}
+		value := reflect.ValueOf(out).Elem()
 
 		for rows.Next() {
 			m := reflect.New(reflect.TypeOf(self.mode).Elem()).Elem()
@@ -305,18 +308,18 @@ func (self *Object) All() ([]interface{}, error) {
 			}
 			err = rows.Scan(val...)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			//m.Field(0).MethodByName("Objects").Call([]reflect.Value{m.Addr()})
 			obj := Object{} //Object(m.Interface().(Module))
 			obj.Objects(m.Addr().Interface().(Module)).Existed()
 			m.FieldByName("Object").Set(reflect.ValueOf(obj))
+			value.Set(reflect.Append(value, m))
 
-			ret = append(ret, m.Addr().Interface())
 		}
-		return ret, err
+		return err
 	} else {
-		return nil, err
+		return err
 	}
 
 }

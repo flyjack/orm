@@ -115,7 +115,7 @@ func (self *CacheModule) Objects(mode Module) *CacheModule {
 	redis := GetRedisClient("default")
 	self.Cache = redis
 	if debug_sql {
-		Debug.Println("CacheModule.Objects  redis ", redis.Addr, self.where)
+		//Debug.Println("CacheModule.Objects  redis ", redis.Addr, self.where)
 	}
 	return self
 }
@@ -244,6 +244,7 @@ func (self *CacheModule) Set(key string, val interface{}) (err error) {
 	}
 
 	var over bool
+
 	over, err = self.Cache.Hset(self.cachekey, key, b)
 	if err != nil {
 		return
@@ -278,7 +279,17 @@ func (self *CacheModule) Limit(page, step int) *CacheModule {
 	self.Object.Limit(page, step)
 	return self
 }
-func (self *CacheModule) AllOnCache() ([]interface{}, error) {
+func (self *CacheModule) AllOnCache(out interface{}) error {
+	defer func() {
+		val := reflect.ValueOf(out).Elem()
+		for i := 0; i < val.Len(); i++ {
+			if val.Index(i).FieldByName("CacheModule").FieldByName("Cache").IsNil() {
+				m := CacheModule{}
+				m.Objects(val.Index(i).Addr().Interface().(Module)).Existed()
+				val.Index(i).FieldByName("CacheModule").Set(reflect.ValueOf(m))
+			}
+		}
+	}()
 	key := self.getKey()
 	if keys, err := self.Keys(key); err == nil && len(keys) > 0 {
 		//(keys)
@@ -289,49 +300,51 @@ func (self *CacheModule) AllOnCache() ([]interface{}, error) {
 			if step > len(keys) {
 				step = len(keys)
 			}
+			value := reflect.ValueOf(out).Elem()
 			if page < len(keys) {
 				keys = keys[page:step]
-				vals := make([]interface{}, len(keys))
-				for i, k := range keys {
-					vals[i] = self.key2Mode(k)
+
+				for _, k := range keys {
+					//vals[i] = self.key2Mode(k)
+					value.Set(reflect.Append(value, self.key2Mode(k)))
 				}
-				return vals, nil
-			} else {
-				return make([]interface{}, 0), nil
+
 			}
+
 		} else {
-			vals := make([]interface{}, len(keys))
-			for i, k := range keys {
-				vals[i] = self.key2Mode(k)
+			value := reflect.ValueOf(out).Elem()
+			for _, k := range keys {
+				value.Set(reflect.Append(value, self.key2Mode(k)))
 			}
-			return vals, nil
+
 		}
+		return nil
 	} else {
-		if err == nil {
-			return []interface{}{}, nil
-		}
-		return nil, err
+		return err
 	}
 }
-func (self *CacheModule) All() ([]interface{}, error) {
-	if rets, err := self.AllOnCache(); err == nil && len(rets) > 0 {
-		return rets, err
+func (self *CacheModule) All(out interface{}) error {
+
+	if err := self.AllOnCache(out); err == nil && reflect.ValueOf(out).Elem().Len() > 0 {
+		return err
 	} else {
-		if debug_sql {
-			Error.Println("all error:", err, len(rets))
-		}
 		//self.Object.All()
-		if rets, err := self.Object.All(); err == nil {
-			for _, item := range rets {
+		if err := self.Object.All(out); err == nil {
 
-				//Debug.Println(item)
-				self.saveToCache(item.(Module))
+			val := reflect.ValueOf(out).Elem()
+			for i := 0; i < val.Len(); i++ {
+				if val.Index(i).FieldByName("CacheModule").FieldByName("Cache").IsNil() {
+					m := CacheModule{}
+					m.Objects(val.Index(i).Addr().Interface().(Module)).Existed()
+					m.SaveToCache()
+					val.Index(i).FieldByName("CacheModule").Set(reflect.ValueOf(m))
+				}
 			}
-			return rets, nil
-		} else {
-			return nil, err
-		}
 
+			return nil
+		} else {
+			return err
+		}
 	}
 }
 
@@ -358,6 +371,7 @@ func (self *CacheModule) OneOnCache() error {
 	}
 	if debug_sql {
 		Debug.Println("key ", self.cachekey, " is exists ", n)
+
 	}
 	if n == false {
 		return ErrKeyNotExist
@@ -505,7 +519,7 @@ func (self *CacheModule) fieldToByte(value interface{}) (str []byte) {
 	return
 }
 
-func (self *CacheModule) key2Mode(key string) interface{} {
+func (self *CacheModule) key2Mode(key string) reflect.Value {
 	typ := reflect.TypeOf(self.mode).Elem()
 	val := reflect.New(typ).Elem()
 	for i := 0; i < typ.NumField(); i++ {
@@ -539,7 +553,7 @@ func (self *CacheModule) key2Mode(key string) interface{} {
 	mode := CacheModule{}
 	mode.Objects(val.Addr().Interface().(Module)).Existed()
 	val.FieldByName("CacheModule").Set(reflect.ValueOf(mode))
-	return val.Addr().Interface()
+	return val
 }
 func (self CacheModule) saveToCache(mode Module) error {
 	return CacheMode(mode).Ca(self.cache_address).SaveToCache()
