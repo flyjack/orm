@@ -27,6 +27,7 @@ postgree "github.com/lib/pq"
     // 参数分别为 名称 ， 驱动， 连接字符串
     // 注：必须包含一个default 连接， 作为默认连接。
     orm.NewDatabase("default" , "mysql" , "user:passwd@ip/database?charset=utf8&parseTime=true")
+	
 
 
     //建立一个数据模型。 
@@ -36,6 +37,24 @@ postgree "github.com/lib/pq"
 		Name string `field:"username"`
 		Passwd string `field:"password"`
 	}
+	
+	
+	
+	//读写分离:
+	orm.NewDatabase("write-conname" , "mysql" , "user:passwd@ip/database?charset=utf8&parseTime=true")
+	orm.NewDatabase("read-conname" , "mysql" , "user:passwd@ip/database?charset=utf8&parseTime=true")
+	orm.SetWriteConnectName("write-conname")
+	orm.SetReadConnectName("read-conname")
+	
+	
+	
+	//变更Cache 列表(Redis)
+	
+	orm.CacheConsistent.Add("127.0.0.1:6379") //添加一个redis服务地址
+	orm.CacheConsistent.Set([]string{"127.0.0.1:6379" , "127.0.0.1:6380"})   //批量设置redis 
+	orm.CacheConsistent.Remove("127.0.0.1:6380") //删除一个地址
+	
+	
 
 [更多信息>>](docs/mode.md)
 
@@ -71,3 +90,10 @@ postgree "github.com/lib/pq"
 
 
 	}
+	
+##一些说明， 这个ORM的目的：
+
+1. 简化数据库操作方式
+2. 降低数据库的操作压力
+
+比较适合出现频繁，高性能要求的数据库读写操作。 使用CacheModule 模式操作数据时， 大多数情况下，热数据会被导入到缓存，这样的情况下， mysql的度频率会降低，读速度会提高很多，同时， 使用Set或者Incry等方式修改数据， 写速度会大大提升。
