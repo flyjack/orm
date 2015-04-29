@@ -39,8 +39,6 @@ type Object struct {
 }
 
 func (self *Object) Objects(mode Module) *Object {
-	self.Lock()
-	defer self.Unlock()
 	self.SetTable(mode.GetTableName())
 	self.Init()
 
@@ -65,8 +63,6 @@ func (self *Object) Existed() *Object {
 // name 结构字段名称
 // val 结构数据
 func (self *Object) Change(name string, val interface{}) *Object {
-	self.Lock()
-	defer self.Unlock()
 	typ := reflect.TypeOf(self.mode).Elem()
 	fieldName := strings.Split(name, "__")
 	if field, ok := typ.FieldByName(fieldName[0]); ok && len(field.Tag.Get("field")) > 0 {
@@ -83,8 +79,6 @@ func (self *Object) Change(name string, val interface{}) *Object {
 // name 结构字段名称
 // val 需要过滤的数据值
 func (self *Object) Filter(name string, val interface{}) *Object {
-	self.Lock()
-	defer self.Unlock()
 	typ := reflect.TypeOf(self.mode).Elem()
 	fieldName := strings.Split(name, "__")
 	if field, ok := typ.FieldByName(fieldName[0]); ok && len(field.Tag.Get("field")) > 0 {
@@ -97,8 +91,6 @@ func (self *Object) Filter(name string, val interface{}) *Object {
 	return self
 }
 func (self *Object) FilterOr(name string, val interface{}) *Object {
-	self.Lock()
-	defer self.Unlock()
 	typ := reflect.TypeOf(self.mode).Elem()
 	fieldName := strings.Split(name, "__")
 	if field, ok := typ.FieldByName(fieldName[0]); ok && len(field.Tag.Get("field")) > 0 {
@@ -113,8 +105,6 @@ func (self *Object) FilterOr(name string, val interface{}) *Object {
 
 // Filter 的一次传入版本 ， 不建议使用 , 因为map 循序不可控
 func (self *Object) Filters(filters map[string]interface{}) *Object {
-	self.Lock()
-	defer self.Unlock()
 	for k, v := range filters {
 		self.Filter(k, v)
 	}
@@ -348,8 +338,6 @@ func (self *Object) One() error {
 }
 
 func (self *Object) Field(name string) reflect.Value {
-	self.RLock()
-	defer self.RUnlock()
 	valMode := reflect.ValueOf(self.mode).Elem()
 	return valMode.FieldByName(name)
 }
