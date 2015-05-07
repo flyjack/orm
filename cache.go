@@ -66,7 +66,7 @@ func CacheMode(mode Module) (cache *CacheModule) {
 			cache.cache_prefix = prefix
 		}
 	}
-	cache.Cache = GetRedisClient("default")
+	cache.Cache = GetCacheClient("default")
 	return
 }
 
@@ -112,7 +112,7 @@ func (self *CacheModule) Objects(mode Module) *CacheModule {
 		}
 
 	}
-	redis := GetRedisClient("default")
+	redis := GetCacheClient("default")
 	self.Cache = redis
 	if debug_sql {
 		//Debug.Println("CacheModule.Objects  redis ", redis.Addr, self.where)
@@ -142,7 +142,7 @@ func GetCacheConn(key interface{}) (address string, c Cache) {
 		b = strconv.AppendBool(b, value.Bool())
 	}
 	address = string(b)
-	c = GetRedisClient(address)
+	c = GetCacheClient(address)
 	return
 }
 
@@ -283,10 +283,10 @@ func (self *CacheModule) AllOnCache(out interface{}) error {
 	defer func() {
 		val := reflect.ValueOf(out).Elem()
 		for i := 0; i < val.Len(); i++ {
-			if val.Index(i).FieldByName("CacheModule").FieldByName("Cache").IsNil() {
+			if val.Index(i).Elem().FieldByName("CacheModule").FieldByName("Cache").IsNil() {
 				m := CacheModule{}
 				m.Objects(val.Index(i).Addr().Interface().(Module)).Existed()
-				val.Index(i).FieldByName("CacheModule").Set(reflect.ValueOf(m))
+				val.Index(i).Elem().FieldByName("CacheModule").Set(reflect.ValueOf(m))
 			}
 		}
 	}()
@@ -306,7 +306,7 @@ func (self *CacheModule) AllOnCache(out interface{}) error {
 
 				for _, k := range keys {
 					//vals[i] = self.key2Mode(k)
-					value.Set(reflect.Append(value, self.key2Mode(k)))
+					value.Set(reflect.Append(value, self.key2Mode(k).Addr()))
 				}
 
 			}
@@ -314,7 +314,7 @@ func (self *CacheModule) AllOnCache(out interface{}) error {
 		} else {
 			value := reflect.ValueOf(out).Elem()
 			for _, k := range keys {
-				value.Set(reflect.Append(value, self.key2Mode(k)))
+				value.Set(reflect.Append(value, self.key2Mode(k).Addr()))
 			}
 
 		}
@@ -333,11 +333,11 @@ func (self *CacheModule) All(out interface{}) error {
 
 			val := reflect.ValueOf(out).Elem()
 			for i := 0; i < val.Len(); i++ {
-				if val.Index(i).FieldByName("CacheModule").FieldByName("Cache").IsNil() {
+				if val.Index(i).Elem().FieldByName("CacheModule").FieldByName("Cache").IsNil() {
 					m := CacheModule{}
-					m.Objects(val.Index(i).Addr().Interface().(Module)).Existed()
+					m.Objects(val.Index(i).Interface().(Module)).Existed()
 					m.SaveToCache()
-					val.Index(i).FieldByName("CacheModule").Set(reflect.ValueOf(m))
+					val.Index(i).Elem().FieldByName("CacheModule").Set(reflect.ValueOf(m))
 				}
 			}
 
@@ -360,18 +360,20 @@ func (self *CacheModule) DeleteOnCache() error {
 }
 func (self *CacheModule) OneOnCache() error {
 	key := self.getKey()
+
 	self.cachekey = key
 
-	n, err := self.Exists(key)
+	n, err := self.Cache.Exists(key)
 	if err != nil {
 		if debug_sql {
-			Debug.Println(err)
+			Error.Println(err)
 		}
+
 		return err
 	}
-	if debug_sql {
-		Debug.Println("key ", self.cachekey, " is exists ", n)
 
+	if debug_sql {
+		Debug.Println("key ", self.cachekey, self.Cache, " is exists ", n)
 	}
 	if n == false {
 		return ErrKeyNotExist
@@ -420,7 +422,9 @@ func (self *CacheModule) One() error {
 		//return errors.New("key " + key + " not exists!")
 		err = self.Object.One()
 		if err == nil {
+
 			err = self.SaveToCache() //self.saveToCache(self.mode)
+			Debug.Println("=-================= save to cache .. ", err)
 		} else {
 			Error.Println(err)
 		}

@@ -304,7 +304,7 @@ func (self *Object) All(out interface{}) error {
 			obj := Object{} //Object(m.Interface().(Module))
 			obj.Objects(m.Addr().Interface().(Module)).Existed()
 			m.FieldByName("Object").Set(reflect.ValueOf(obj))
-			value.Set(reflect.Append(value, m))
+			value.Set(reflect.Append(value, m.Addr()))
 
 		}
 		return err
