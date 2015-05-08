@@ -113,6 +113,7 @@ func (self *Params) Init() {
 	self.connname = ""
 	self.hasRow = false
 	self.where = self.where[len(self.where):]
+
 	self.or = self.or[len(self.or):]
 
 	self.set = self.set[len(self.set):]
@@ -130,7 +131,9 @@ func (self *Params) SetField(fields ...string) {
 }
 
 func (self *Params) Filter(name string, val interface{}) *Params {
+
 	self.where = append(self.where, ParmaField{name, val})
+
 	return self
 }
 func (self *Params) FilterOr(name string, val interface{}) *Params {
@@ -187,7 +190,7 @@ func (self *Params) All() (rows *sql.Rows, err error) {
 	}
 	rows, err = db.Query(sqls, val...)
 	if err != nil {
-		panic(err)
+		Error.Println(err)
 	}
 
 	return
@@ -214,19 +217,23 @@ func (self *Params) One(vals ...interface{}) error {
 	return nil
 }
 func (self *Params) Delete() (res sql.Result, err error) {
-	var stmt *sql.Stmt
+
 	db, query := self.getWriteConnect()
 	sqls, val := query.Delete()
 	if debug_sql {
 		Debug.Println("delete  ", sqls, val)
 	}
+	var stmt *sql.Stmt
 	stmt, err = db.Prepare(sqls)
 	if err == nil {
 		defer stmt.Close()
+	} else {
+		Error.Println(err)
+		return
 	}
 	res, err = stmt.Exec(val...)
 	if err != nil {
-		panic(err)
+		Error.Println(err)
 	}
 
 	return

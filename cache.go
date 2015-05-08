@@ -21,6 +21,7 @@ var st []byte = []byte("*")
 var (
 	ErrKeyNotExist = errors.New("keys not exists")
 )
+var debug_sql bool = false
 
 func SetCachePrefix(str string) {
 	cache_prefix = []byte(str)
@@ -29,8 +30,6 @@ func SetCachePrefix(str string) {
 func SetDefaultCacheDb(db int) {
 	cache_db = db
 }
-
-var debug_sql bool = false
 
 func SetDebug(b bool) {
 	debug_sql = b
@@ -48,26 +47,6 @@ type Cache interface {
 	Hincrby(key, filed string, n int64) (int64, error)
 	Exists(key string) (bool, error)
 	Del(key string) (bool, error)
-}
-
-func CacheMode(mode Module) (cache *CacheModule) {
-	cache = new(CacheModule)
-	cache.CacheFileds = []string{}
-	cache.CacheNames = []string{}
-	cache.Object.Objects(mode)
-	typeOf := reflect.TypeOf(cache.mode).Elem()
-	for i := 0; i < typeOf.NumField(); i++ {
-		field := typeOf.Field(i)
-		if name := field.Tag.Get("cache"); len(name) > 0 {
-			cache.CacheFileds = append(cache.CacheFileds, field.Tag.Get("field"))
-			cache.CacheNames = append(cache.CacheNames, name)
-		}
-		if prefix := field.Tag.Get("cache_prefix"); len(prefix) > 0 {
-			cache.cache_prefix = prefix
-		}
-	}
-	cache.Cache = GetCacheClient("default")
-	return
 }
 
 type CacheModuleInteerface interface {
@@ -100,7 +79,11 @@ func (self *CacheModule) Objects(mode Module) *CacheModule {
 	self.CacheFileds = []string{}
 	self.CacheNames = []string{}
 	self.Object.Objects(mode)
+	self.Lock()
+	defer self.Unlock()
 	typeOf := reflect.TypeOf(self.mode).Elem()
+	self.cachekey = "default"
+	self.Cache = nil
 	for i := 0; i < typeOf.NumField(); i++ {
 		field := typeOf.Field(i)
 		if name := field.Tag.Get("cache"); len(name) > 0 {
@@ -110,13 +93,15 @@ func (self *CacheModule) Objects(mode Module) *CacheModule {
 		if prefix := field.Tag.Get("cache_prefix"); len(prefix) > 0 {
 			self.cache_prefix = prefix
 		}
+		//支持分布是hash key
+		if use_hash_cache && field.Tag.Get("index") == "pk" && field.Tag.Get("distr") == "true" {
+			self.cache_address, self.Cache = GetCacheConn(reflect.ValueOf(self.mode).Elem().Field(i).Interface())
+		}
+	}
+	if self.Cache == nil {
+		self.Cache = GetCacheClient("default")
+	}
 
-	}
-	redis := GetCacheClient("default")
-	self.Cache = redis
-	if debug_sql {
-		//Debug.Println("CacheModule.Objects  redis ", redis.Addr, self.where)
-	}
 	return self
 }
 
@@ -126,6 +111,7 @@ func (self *CacheModule) Db(name string) *CacheModule {
 }
 
 func GetCacheConn(key interface{}) (address string, c Cache) {
+
 	value := reflect.ValueOf(key)
 	typeOf := reflect.TypeOf(key)
 	b := []byte{}
@@ -142,14 +128,19 @@ func GetCacheConn(key interface{}) (address string, c Cache) {
 		b = strconv.AppendBool(b, value.Bool())
 	}
 	address = string(b)
+	if use_hash_cache == false {
+		return address, cacheconn
+	}
 	c = GetCacheClient(address)
 	return
 }
 
 func (self *CacheModule) Ca(key interface{}) *CacheModule {
-	self.cache_address, self.Cache = GetCacheConn(key)
-	if debug_sql {
-		Debug.Println("Change cache address  redis ", self.cache_address)
+	if use_hash_cache {
+		self.cache_address, self.Cache = GetCacheConn(key)
+		if debug_sql {
+			Debug.Println("Change cache address  redis ", self.cache_address)
+		}
 	}
 	return self
 }
@@ -260,6 +251,8 @@ func (self *CacheModule) Set(key string, val interface{}) (err error) {
 
 func (self *CacheModule) Save() (isnew bool, id int64, err error) {
 	isnew, id, err = self.Object.Save()
+	self.Lock()
+	defer self.Unlock()
 	key := self.GetCacheKey()
 	if i, err := self.Exists(key); err == nil && i == false {
 		self.SaveToCache()
@@ -303,21 +296,41 @@ func (self *CacheModule) AllOnCache(out interface{}) error {
 			value := reflect.ValueOf(out).Elem()
 			if page < len(keys) {
 				keys = keys[page:step]
-
 				for _, k := range keys {
 					//vals[i] = self.key2Mode(k)
-					value.Set(reflect.Append(value, self.key2Mode(k).Addr()))
+					if mode := self.key2Mode(k); mode.IsValid() {
+						add := true
+						for _, param := range self.funcWhere {
+							if param.val(mode.FieldByName(param.name).Interface()) == false {
+								add = false
+							}
+						}
+						if add {
+							value.Set(reflect.Append(value, mode.Addr()))
+						}
+					}
 				}
-
 			}
-
 		} else {
 			value := reflect.ValueOf(out).Elem()
 			for _, k := range keys {
-				value.Set(reflect.Append(value, self.key2Mode(k).Addr()))
+
+				if mode := self.key2Mode(k); mode.IsValid() {
+
+					add := true
+					for _, param := range self.funcWhere {
+						if param.val(mode.FieldByName(param.name).Interface()) == false {
+							add = false
+						}
+					}
+					if add {
+						value.Set(reflect.Append(value, mode.Addr()))
+					}
+				}
 			}
 
 		}
+
 		return nil
 	} else {
 		return err
@@ -326,28 +339,41 @@ func (self *CacheModule) AllOnCache(out interface{}) error {
 func (self *CacheModule) All(out interface{}) error {
 
 	if err := self.AllOnCache(out); err == nil && reflect.ValueOf(out).Elem().Len() > 0 {
+
 		return err
 	} else {
 		//self.Object.All()
+		if debug_sql {
+			Debug.Println("========================== not in cache ", err, out)
+		}
 		if err := self.Object.All(out); err == nil {
 
 			val := reflect.ValueOf(out).Elem()
 			for i := 0; i < val.Len(); i++ {
+				Debug.Println(val.Index(i).Elem().FieldByName("CacheModule").FieldByName("Cache"))
 				if val.Index(i).Elem().FieldByName("CacheModule").FieldByName("Cache").IsNil() {
 					m := CacheModule{}
 					m.Objects(val.Index(i).Interface().(Module)).Existed()
-					m.SaveToCache()
+					Debug.Println(m.SaveToCache())
 					val.Index(i).Elem().FieldByName("CacheModule").Set(reflect.ValueOf(m))
 				}
 			}
 
 			return nil
 		} else {
+			Error.Println(err)
 			return err
 		}
 	}
 }
+func (self *CacheModule) Delete() (err error) {
+	err = self.DeleteOnCache()
+	if _, err = self.Object.Delete(); err != nil {
+		return
+	}
 
+	return
+}
 func (self *CacheModule) DeleteOnCache() error {
 	if len(self.cachekey) <= 0 {
 		self.cachekey = self.getKey()
@@ -362,8 +388,7 @@ func (self *CacheModule) OneOnCache() error {
 	key := self.getKey()
 
 	self.cachekey = key
-
-	n, err := self.Cache.Exists(key)
+	n, err := self.Cache.Exists(self.cachekey)
 	if err != nil {
 		if debug_sql {
 			Error.Println(err)
@@ -559,11 +584,8 @@ func (self *CacheModule) key2Mode(key string) reflect.Value {
 	val.FieldByName("CacheModule").Set(reflect.ValueOf(mode))
 	return val
 }
-func (self CacheModule) saveToCache(mode Module) error {
-	return CacheMode(mode).Ca(self.cache_address).SaveToCache()
-}
 
-func (self *CacheModule) SaveToCache() error {
+func (self CacheModule) SaveToCache() error {
 	key := self.GetCacheKey()
 	maping := map[string]interface{}{}
 	vals := reflect.ValueOf(self.mode).Elem()
@@ -580,7 +602,6 @@ func (self *CacheModule) SaveToCache() error {
 				}
 			}
 		}
-
 		//补充一个仅存在于cache中的字段。
 		if name := field.Tag.Get("cache_only_field"); len(name) > 0 {
 			switch vals.Field(i).Interface().(type) {
@@ -591,10 +612,9 @@ func (self *CacheModule) SaveToCache() error {
 			}
 		}
 	}
-
 	err := self.Cache.Hmset(key, maping)
 	if debug_sql {
 		Debug.Println("转储倒内存", key, maping, err, self.Cache)
 	}
-	return err
+	return nil
 }

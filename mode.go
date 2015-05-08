@@ -14,6 +14,11 @@ type Module interface {
 	GetTableName() string
 }
 
+type FuncParam struct {
+	name string
+	val  func(interface{}) bool
+}
+
 func Objects(mode Module) Object {
 
 	typ := reflect.TypeOf(mode).Elem()
@@ -35,13 +40,16 @@ func Objects(mode Module) Object {
 type Object struct {
 	sync.RWMutex
 	Params
-	mode Module
+	mode      Module
+	funcWhere []FuncParam
 }
 
 func (self *Object) Objects(mode Module) *Object {
+	self.Lock()
+	defer self.Unlock()
 	self.SetTable(mode.GetTableName())
 	self.Init()
-
+	self.funcWhere = self.funcWhere[len(self.funcWhere):]
 	typ := reflect.TypeOf(mode).Elem()
 	vals := []string{}
 
@@ -55,6 +63,8 @@ func (self *Object) Objects(mode Module) *Object {
 	return self
 }
 func (self *Object) Existed() *Object {
+	self.Lock()
+	defer self.Unlock()
 	self.hasRow = true
 	return self
 }
@@ -63,6 +73,8 @@ func (self *Object) Existed() *Object {
 // name 结构字段名称
 // val 结构数据
 func (self *Object) Change(name string, val interface{}) *Object {
+	self.Lock()
+	defer self.Unlock()
 	typ := reflect.TypeOf(self.mode).Elem()
 	fieldName := strings.Split(name, "__")
 	if field, ok := typ.FieldByName(fieldName[0]); ok && len(field.Tag.Get("field")) > 0 {
@@ -79,18 +91,28 @@ func (self *Object) Change(name string, val interface{}) *Object {
 // name 结构字段名称
 // val 需要过滤的数据值
 func (self *Object) Filter(name string, val interface{}) *Object {
-	typ := reflect.TypeOf(self.mode).Elem()
-	fieldName := strings.Split(name, "__")
-	if field, ok := typ.FieldByName(fieldName[0]); ok && len(field.Tag.Get("field")) > 0 {
-		name := field.Tag.Get("field")
-		if len(fieldName) > 1 {
-			name = name + "__" + fieldName[1]
+	self.Lock()
+	defer self.Unlock()
+	switch val.(type) {
+	case func(interface{}) bool:
+		self.funcWhere = append(self.funcWhere, FuncParam{name, val.(func(interface{}) bool)})
+	default:
+		typ := reflect.TypeOf(self.mode).Elem()
+		fieldName := strings.Split(name, "__")
+		if field, ok := typ.FieldByName(fieldName[0]); ok && len(field.Tag.Get("field")) > 0 {
+			name := field.Tag.Get("field")
+			if len(fieldName) > 1 {
+				name = name + "__" + fieldName[1]
+			}
+			self.Params.Filter(name, val)
 		}
-		self.Params.Filter(name, val)
 	}
+
 	return self
 }
 func (self *Object) FilterOr(name string, val interface{}) *Object {
+	self.Lock()
+	defer self.Unlock()
 	typ := reflect.TypeOf(self.mode).Elem()
 	fieldName := strings.Split(name, "__")
 	if field, ok := typ.FieldByName(fieldName[0]); ok && len(field.Tag.Get("field")) > 0 {
@@ -153,36 +175,7 @@ func (self *Object) Count() (int64, error) {
 func (self *Object) Delete() (int64, error) {
 	self.Lock()
 	defer self.Unlock()
-	valus := reflect.ValueOf(self.mode).Elem()
-	for i := 0; i < valus.NumField(); i++ {
-		typ := valus.Type().Field(i)
-		val := valus.Field(i)
-		if typ.Tag.Get("index") == "pk" {
-			switch val.Kind() {
-			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-				if val.Int() > 0 {
-					self.Params.Filter(typ.Name, val.Int())
-				}
-			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-				if val.Uint() > 0 {
-					self.Params.Filter(typ.Name, val.Uint())
-				}
-			case reflect.Float32, reflect.Float64:
-				if val.Float() > 0.0 {
-					self.Params.Filter(typ.Tag.Get("field"), val.Float())
-				}
-			case reflect.String:
-				if len(val.String()) > 0 {
-					self.Params.Filter(typ.Tag.Get("field"), val.String())
-				}
-			default:
-				switch val.Interface().(type) {
-				case time.Time:
-					self.Params.Filter(typ.Tag.Get("field"), val.Interface())
-				}
-			}
-		}
-	}
+	self.autoWhere()
 	if len(self.Params.where) > 0 {
 		res, err := self.Params.Delete()
 		if err != nil {
@@ -193,6 +186,15 @@ func (self *Object) Delete() (int64, error) {
 		return 0, errors.New("No Where")
 	}
 
+}
+
+func (self Object) printModel(name string) {
+	valus := reflect.ValueOf(self.mode).Elem()
+	Debug.Println("PRINT MODE =======================================", name, " Start ")
+	for i := 0; i < valus.NumField(); i++ {
+		Debug.Println("PRINT MODE ", valus.Type().Field(i).Name, valus.Field(i).Interface())
+	}
+	Debug.Println("PRINT MODE =======================================", name, " END ")
 }
 
 //更新活添加
@@ -226,13 +228,18 @@ func (self *Object) Save() (bool, int64, error) {
 			if typ.Tag.Get("index") == "pk" {
 				switch val.Kind() {
 				case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-					val.SetUint(uint64(id))
+					if val.Uint() == 0 {
+						val.SetUint(uint64(id))
+					}
 				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-					val.SetInt(id)
+					if val.Int() == 0 {
+						val.SetInt(id)
+					}
 				}
 			}
 		}
 	}
+
 	return isNew, id, err
 }
 
@@ -296,19 +303,31 @@ func (self *Object) All(out interface{}) error {
 					val = append(val, m.Field(i).Addr().Interface())
 				}
 			}
+
 			err = rows.Scan(val...)
 			if err != nil {
-				return err
+				Error.Println(err)
+				continue
 			}
 			//m.Field(0).MethodByName("Objects").Call([]reflect.Value{m.Addr()})
 			obj := Object{} //Object(m.Interface().(Module))
 			obj.Objects(m.Addr().Interface().(Module)).Existed()
 			m.FieldByName("Object").Set(reflect.ValueOf(obj))
-			value.Set(reflect.Append(value, m.Addr()))
+			add := true
+			for _, param := range self.funcWhere {
+
+				if param.val(m.FieldByName(param.name).Interface()) == false {
+					add = false
+				}
+			}
+			if add == true {
+				value.Set(reflect.Append(value, m.Addr()))
+			}
 
 		}
 		return err
 	} else {
+		Error.Println(err)
 		return err
 	}
 
