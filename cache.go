@@ -82,7 +82,6 @@ func (self *CacheModule) Objects(mode Module) *CacheModule {
 	self.Lock()
 	defer self.Unlock()
 	typeOf := reflect.TypeOf(self.mode).Elem()
-	self.cachekey = "default"
 	self.Cache = nil
 	for i := 0; i < typeOf.NumField(); i++ {
 		field := typeOf.Field(i)
@@ -350,11 +349,10 @@ func (self *CacheModule) All(out interface{}) error {
 
 			val := reflect.ValueOf(out).Elem()
 			for i := 0; i < val.Len(); i++ {
-				Debug.Println(val.Index(i).Elem().FieldByName("CacheModule").FieldByName("Cache"))
 				if val.Index(i).Elem().FieldByName("CacheModule").FieldByName("Cache").IsNil() {
 					m := CacheModule{}
 					m.Objects(val.Index(i).Interface().(Module)).Existed()
-					Debug.Println(m.SaveToCache())
+					m.SaveToCache()
 					val.Index(i).Elem().FieldByName("CacheModule").Set(reflect.ValueOf(m))
 				}
 			}
