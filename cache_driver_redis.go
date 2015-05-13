@@ -55,12 +55,15 @@ func (c *RedisCache) Keys(key string) (keys []string, err error) {
 func (c *RedisCache) Incrby(key string, n int64) (int64, error) {
 	conn := c.Pool.Get()
 	defer conn.Close()
+	if n == 0 {
+		return redis.Int64(conn.Do("GET", key))
+	}
 	return redis.Int64(conn.Do("INCRBY", key, n))
 }
 func (c *RedisCache) Hset(key, field string, b []byte) (bool, error) {
 	conn := c.Pool.Get()
 	defer conn.Close()
-	_, err := conn.Do("HSET", field, b)
+	_, err := conn.Do("HSET", key, field, b)
 	if err != nil {
 		return false, err
 	} else {
@@ -95,6 +98,9 @@ func (c *RedisCache) Hget(key, field string) ([]byte, error) {
 func (c *RedisCache) Hincrby(key, field string, n int64) (int64, error) {
 	conn := c.Pool.Get()
 	defer conn.Close()
+	if n == 0 {
+		return redis.Int64(conn.Do("HGET", key, field))
+	}
 	return redis.Int64(conn.Do("HINCRBY", key, field, n))
 }
 func (c *RedisCache) Exists(key string) (bool, error) {

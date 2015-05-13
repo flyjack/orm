@@ -3,12 +3,15 @@
 package orm
 
 import (
+	"database/sql"
 	"errors"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
 )
+
+var ErrDoesNotExist = errors.New("DoesNotExist")
 
 type Module interface {
 	GetTableName() string
@@ -42,6 +45,10 @@ type Object struct {
 	Params
 	mode      Module
 	funcWhere []FuncParam
+}
+
+func (self *Object) DoesNotExist() error {
+	return ErrDoesNotExist
 }
 
 func (self *Object) Objects(mode Module) *Object {
@@ -183,7 +190,7 @@ func (self *Object) Delete() (int64, error) {
 		}
 		return res.RowsAffected()
 	} else {
-		return 0, errors.New("No Where")
+		return 0, errors.New("where params is 0")
 	}
 
 }
@@ -352,7 +359,13 @@ func (self *Object) One() error {
 		self.where = self.where[len(self.where):]
 		return nil
 	} else {
-		return err
+
+		switch err {
+		case sql.ErrNoRows:
+			return ErrDoesNotExist
+		default:
+			return err
+		}
 	}
 }
 

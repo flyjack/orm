@@ -63,6 +63,7 @@ type CacheModuleInteerface interface {
 	SaveToCache() error
 	All() ([]interface{}, error)
 	AllCache() ([]interface{}, error)
+	DoesNotExist() error
 }
 
 type CacheModule struct {
@@ -73,6 +74,7 @@ type CacheModule struct {
 	CacheNames    []string
 	cache_prefix  string
 	cache_address string
+	modefield     map[string]interface{}
 }
 
 func (self *CacheModule) Objects(mode Module) *CacheModule {
@@ -82,6 +84,9 @@ func (self *CacheModule) Objects(mode Module) *CacheModule {
 	self.Lock()
 	defer self.Unlock()
 	typeOf := reflect.TypeOf(self.mode).Elem()
+	valOf := reflect.ValueOf(self.mode).Elem()
+	self.modefield = make(map[string]interface{}, typeOf.NumField())
+
 	self.Cache = nil
 	for i := 0; i < typeOf.NumField(); i++ {
 		field := typeOf.Field(i)
@@ -94,7 +99,10 @@ func (self *CacheModule) Objects(mode Module) *CacheModule {
 		}
 		//支持分布是hash key
 		if use_hash_cache && field.Tag.Get("index") == "pk" && field.Tag.Get("distr") == "true" {
-			self.cache_address, self.Cache = GetCacheConn(reflect.ValueOf(self.mode).Elem().Field(i).Interface())
+			self.cache_address, self.Cache = GetCacheConn(valOf.Field(i).Interface())
+		}
+		if name := field.Tag.Get("field"); name != "" {
+			self.modefield[typeOf.Field(i).Name] = valOf.Field(i).Interface()
 		}
 	}
 	if self.Cache == nil {
@@ -163,17 +171,29 @@ func (self *CacheModule) GetCacheKey() string {
 	}
 	return string(str)
 }
-func (self *CacheModule) setModeFieldUint(field string, val interface{}) {
+func (self *CacheModule) setModeField(field string, val interface{}) error {
 
-	value := reflect.ValueOf(self.mode).Elem()
-	item := value.FieldByName(field)
-	switch item.Type().Kind() {
-	case reflect.Uint32, reflect.Uint64, reflect.Uint, reflect.Uint8, reflect.Uint16:
-		item.SetUint(uint64(val.(int64)))
-	case reflect.Int32, reflect.Int64, reflect.Int, reflect.Int8, reflect.Int16:
-		item.SetInt(val.(int64))
-	default:
-		Error.Println("(CacheModule) setModeFieldUint", field, item.Type().Kind())
+	typ := reflect.TypeOf(self.mode).Elem()
+
+	if mfield, ok := typ.FieldByName(field); ok {
+		value := reflect.ValueOf(self.mode).Elem()
+		item := value.FieldByName(field)
+		switch mfield.Type.Kind() {
+		case reflect.Uint32, reflect.Uint64, reflect.Uint, reflect.Uint8, reflect.Uint16:
+
+			item.SetUint(uint64(val.(int64)))
+		case reflect.Int32, reflect.Int64, reflect.Int, reflect.Int8, reflect.Int16:
+			item.SetInt(val.(int64))
+		case reflect.String:
+			item.SetString(val.(string))
+
+		default:
+			Error.Println("(CacheModule) setModeField", field, item.Type().Kind())
+			return errors.New("(CacheModule) setModeField type error ")
+		}
+		return nil
+	} else {
+		return errors.New("(CacheModule) setModeField field not exist")
 	}
 }
 
@@ -181,14 +201,18 @@ func (self *CacheModule) Incrby(key string, val int64) (ret int64, err error) {
 	if self.cachekey == "" {
 		self.cachekey = self.GetCacheKey()
 	}
-	ret, err = self.Cache.Hincrby(self.cachekey, key, val)
 
-	if val >= 0 {
-		self.Object.Change(key+"__add", val)
-	} else if val < 0 {
-		self.Object.Change(key+"__sub", val)
+	ret, _ = self.Cache.Hincrby(self.cachekey, key, val)
+	if val != 0 {
+		if val >= 0 {
+			self.Object.Change(key+"__add", val)
+		} else {
+			self.Object.Change(key+"__sub", val)
+		}
+
+		err = self.setModeField(key, ret)
 	}
-	self.setModeFieldUint(key, ret)
+	//self.modefield[key] = ret
 	//go self.Object.Save()
 	return
 }
@@ -199,35 +223,39 @@ func (self *CacheModule) Incry(key string) (val int64, err error) {
 	return
 }
 
-func (self *CacheModule) Set(key string, val interface{}) (err error) {
+func (self *CacheModule) Set(key string, value interface{}) (err error) {
 
 	b := []byte{}
 	field := reflect.ValueOf(self.mode).Elem().FieldByName(key)
-	switch val.(type) {
-	case uint32, uint64, uint16, uint8, uint:
-		val := reflect.ValueOf(val).Uint()
-		b = strconv.AppendUint(b, val, 10)
-		field.SetUint(val)
-	case string:
-		b = append(b, []byte(val.(string))...)
-		field.SetString(val.(string))
 
-	case int32, int64, int16, int8, int:
-		val := reflect.ValueOf(val).Int()
-		b = strconv.AppendInt(b, val, 10)
-		field.SetInt(val)
-	case float32, float64:
-		val := reflect.ValueOf(val).Float()
-		b = strconv.AppendFloat(b, val, 'f', 0, 64)
-		field.SetFloat(val)
-	case bool:
-		b = strconv.AppendBool(b, val.(bool))
-		field.SetBool(val.(bool))
-	case time.Time:
-		field.Set(reflect.ValueOf(val))
-		b = append(b, []byte(val.(time.Time).Format(time.RFC1123Z))...)
+	val := reflect.ValueOf(value)
+
+	switch field.Kind() {
+	case reflect.Uint32, reflect.Uint64, reflect.Uint16, reflect.Uint8:
+		b = strconv.AppendUint(b, val.Uint(), 10)
+		field.SetUint(val.Uint())
+	case reflect.String:
+		b = append(b, []byte(val.String())...)
+		field.SetString(val.String())
+
+	case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8:
+		b = strconv.AppendInt(b, val.Int(), 10)
+		field.SetInt(val.Int())
+	case reflect.Float64, reflect.Float32:
+		b = strconv.AppendFloat(b, val.Float(), 'f', 0, 64)
+		field.SetFloat(val.Float())
+	case reflect.Bool:
+		b = strconv.AppendBool(b, val.Bool())
+		field.SetBool(val.Bool())
+
 	default:
-		Error.Println("undefined val type")
+		switch value.(type) {
+		case time.Time:
+			field.Set(reflect.ValueOf(value))
+			b = append(b, []byte(value.(time.Time).Format(time.RFC1123Z))...)
+		default:
+			Error.Println("undefined val type")
+		}
 	}
 	if self.cachekey == "" {
 		self.cachekey = self.GetCacheKey()
@@ -243,17 +271,51 @@ func (self *CacheModule) Set(key string, val interface{}) (err error) {
 		return errors.New(self.cachekey + " hset " + key + " error !")
 	}
 	self.Object.Change(key, val)
+	//self.modefield[key] = value
 	//go self.Object.Change(key, val).Save()
 
 	return
 }
 
 func (self *CacheModule) Save() (isnew bool, id int64, err error) {
+	/// 实现， 直接通过 self.xxx= xxx 这样的数据变动支持
+	/*
+		valof := reflect.ValueOf(self.mode).Elem()
+		typof := reflect.TypeOf(self.mode).Elem()
+		for i := 0; i < valof.NumField(); i++ {
+			if typof.Field(i).Tag.Get("field") != "" &&
+				valof.Field(i).Interface() != self.modefield[typof.Field(i).Name] {
+
+				switch valof.Field(i).Kind() {
+				case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
+					self.Set(typof.Field(i).Name, valof.Field(i).Uint())
+				case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
+					self.Set(typof.Field(i).Name, valof.Field(i).Int())
+				case reflect.String:
+					self.Set(typof.Field(i).Name, valof.Field(i).String())
+				}
+
+				Debug.Println("============= \\ ", self.cachekey, typof.Field(i).Name, valof.Field(i).Interface(), self.modefield[typof.Field(i).Name])
+			}
+		}
+		defer func() {
+			self.modefield = nil
+		}()
+	*/
+	upgradecache := false
+	if self.hasRow && len(self.set) == 0 {
+		upgradecache = true
+	}
 	isnew, id, err = self.Object.Save()
+
 	self.Lock()
 	defer self.Unlock()
-	key := self.GetCacheKey()
-	if i, err := self.Exists(key); err == nil && i == false {
+	if upgradecache == false {
+		key := self.GetCacheKey()
+		if i, err := self.Exists(key); err == nil && i == false {
+			self.SaveToCache()
+		}
+	} else {
 		self.SaveToCache()
 	}
 	return
@@ -447,9 +509,6 @@ func (self *CacheModule) One() error {
 		if err == nil {
 
 			err = self.SaveToCache() //self.saveToCache(self.mode)
-			Debug.Println("=-================= save to cache .. ", err)
-		} else {
-			Error.Println(err)
 		}
 		return err
 	} else {
@@ -585,6 +644,7 @@ func (self *CacheModule) key2Mode(key string) reflect.Value {
 
 func (self CacheModule) SaveToCache() error {
 	key := self.GetCacheKey()
+
 	maping := map[string]interface{}{}
 	vals := reflect.ValueOf(self.mode).Elem()
 	typ := reflect.TypeOf(self.mode).Elem()
