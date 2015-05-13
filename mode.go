@@ -79,7 +79,7 @@ func (self *Object) Existed() *Object {
 //修改数据
 // name 结构字段名称
 // val 结构数据
-func (self *Object) Change(name string, val interface{}) *Object {
+func (self *Object) Set(name string, val interface{}) *Object {
 	self.Lock()
 	defer self.Unlock()
 	typ := reflect.TypeOf(self.mode).Elem()
@@ -92,6 +92,10 @@ func (self *Object) Change(name string, val interface{}) *Object {
 		self.Params.Change(name, val)
 	}
 	return self
+}
+
+func (self *Object) Change(name string, val interface{}) *Object {
+	return self.Set(name, val)
 }
 
 //条件筛选
