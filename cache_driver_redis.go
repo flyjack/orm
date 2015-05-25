@@ -7,7 +7,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
-func NewRedisCache(REDIS_HOST string) *RedisCache {
+func NewRedisCache(REDIS_HOST, PASSWD string) *RedisCache {
 	client := &redis.Pool{
 		MaxIdle:     5,                 //最大的空闲连接数，表示即使没有redis连接时依然可以保持N个空闲的连接，而不被清除，随时处于待命状态。
 		MaxActive:   50,                //最大的激活连接数，表示同时最多有N个连接
@@ -18,6 +18,13 @@ func NewRedisCache(REDIS_HOST string) *RedisCache {
 				panic(err)
 				return nil, err
 			}
+			if PASSWD != "" {
+				if _, err := c.Do("AUTH", PASSWD); err != nil {
+					c.Close()
+					return nil, err
+				}
+			}
+
 			// 选择db
 			c.Do("SELECT", cache_db)
 			return c, nil
