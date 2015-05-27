@@ -47,6 +47,7 @@ type Cache interface {
 	Hincrby(key, filed string, n int64) (int64, error)
 	Exists(key string) (bool, error)
 	Del(key string) (bool, error)
+	key2Mode(key string, typ reflect.Type, val reflect.Value) error
 }
 
 type CacheModuleInteerface interface {
@@ -467,34 +468,11 @@ func (self *CacheModule) OneOnCache() error {
 	self.where = self.where[len(self.where):]
 	val := reflect.ValueOf(self.mode).Elem()
 	typ := reflect.TypeOf(self.mode).Elem()
+	self.Cache.key2Mode(key, typ, val)
+
 	for i := 0; i < val.NumField(); i++ {
-		if b, err := self.Cache.Hget(key, typ.Field(i).Name); err == nil {
-			switch val.Field(i).Kind() {
-			case reflect.Uint32, reflect.Uint64, reflect.Uint, reflect.Uint8, reflect.Uint16:
-				id, _ := strconv.ParseUint(string(b), 10, 64)
-				val.Field(i).SetUint(id)
-			case reflect.Int32, reflect.Int64, reflect.Int, reflect.Int8, reflect.Int16:
-				id, _ := strconv.ParseInt(string(b), 10, 64)
-				val.Field(i).SetInt(id)
-			case reflect.Float32, reflect.Float64:
-				id, _ := strconv.ParseFloat(string(b), 64)
-				val.Field(i).SetFloat(id)
-			case reflect.String:
-				val.Field(i).SetString(string(b))
-			case reflect.Bool:
-				id, _ := strconv.ParseBool(string(b))
-				val.Field(i).SetBool(id)
-			default:
-				switch val.Field(i).Interface().(type) {
-				case time.Time:
-					if time, e := time.Parse(time.RFC1123Z, string(b)); e == nil {
-						val.Field(i).Set(reflect.ValueOf(time))
-					}
-				}
-			}
-			if index := typ.Field(i).Tag.Get("index"); len(index) > 0 {
-				self.Object.Filter(typ.Field(i).Name, val.Field(i).Interface())
-			}
+		if index := typ.Field(i).Tag.Get("index"); len(index) > 0 {
+			self.Object.Filter(typ.Field(i).Name, val.Field(i).Interface())
 		}
 	}
 	self.hasRow = true
@@ -608,33 +586,11 @@ func (self *CacheModule) fieldToByte(value interface{}) (str []byte) {
 func (self *CacheModule) key2Mode(key string) reflect.Value {
 	typ := reflect.TypeOf(self.mode).Elem()
 	val := reflect.New(typ).Elem()
-	for i := 0; i < typ.NumField(); i++ {
-		if b, err := self.Cache.Hget(key, typ.Field(i).Name); err == nil {
-			switch val.Field(i).Kind() {
-			case reflect.Uint32, reflect.Uint64, reflect.Uint, reflect.Uint8, reflect.Uint16:
-				id, _ := strconv.ParseUint(string(b), 10, 64)
-				val.Field(i).SetUint(id)
-			case reflect.Int32, reflect.Int64, reflect.Int, reflect.Int8, reflect.Int16:
-				id, _ := strconv.ParseInt(string(b), 10, 64)
-				val.Field(i).SetInt(id)
-			case reflect.Float32, reflect.Float64:
-				id, _ := strconv.ParseFloat(string(b), 64)
-				val.Field(i).SetFloat(id)
-			case reflect.String:
-				val.Field(i).SetString(string(b))
-			case reflect.Bool:
-				id, _ := strconv.ParseBool(string(b))
-				val.Field(i).SetBool(id)
-			default:
-				switch val.Field(i).Interface().(type) {
-				case time.Time:
-					//str = append(str, []byte(values.(time.Time).Format(time.RFC1123Z))...)
-					if time, e := time.Parse(time.RFC1123Z, string(b)); e == nil {
-						val.Field(i).Set(reflect.ValueOf(time))
-					}
-				}
-			}
-		}
+
+	var err error
+	err = self.Cache.key2Mode(key, typ, val)
+	if err != nil {
+		Error.Println(err.Error())
 	}
 	mode := CacheModule{}
 	mode.Objects(val.Addr().Interface().(Module)).Existed()

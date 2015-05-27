@@ -2,10 +2,18 @@ package orm
 
 import (
 	"errors"
+	"reflect"
 	"time"
 
 	"github.com/garyburd/redigo/redis"
 )
+
+func NewRedisCacheWithRedisPool(pool *redis.Pool) *RedisCache {
+	return &RedisCache{pool}
+}
+func SetCacheWithPool(pool *redis.Pool) {
+	cacheconn = &RedisCache{pool}
+}
 
 func NewRedisCache(REDIS_HOST, PASSWD string) *RedisCache {
 	client := &redis.Pool{
@@ -24,7 +32,6 @@ func NewRedisCache(REDIS_HOST, PASSWD string) *RedisCache {
 					return nil, err
 				}
 			}
-
 			// 选择db
 			c.Do("SELECT", cache_db)
 			return c, nil
@@ -110,6 +117,7 @@ func (c *RedisCache) Hincrby(key, field string, n int64) (int64, error) {
 	}
 	return redis.Int64(conn.Do("HINCRBY", key, field, n))
 }
+
 func (c *RedisCache) Exists(key string) (bool, error) {
 	conn := c.Pool.Get()
 	defer conn.Close()
@@ -119,4 +127,39 @@ func (c *RedisCache) Del(key string) (bool, error) {
 	conn := c.Pool.Get()
 	defer conn.Close()
 	return redis.Bool(conn.Do("DEL", key))
+}
+
+func (c *RedisCache) key2Mode(key string, typ reflect.Type, val reflect.Value) error {
+	conn := c.Pool.Get()
+	defer conn.Close()
+	conn.Send("MULTI")
+	vals := []interface{}{}
+	timeField := []int{}
+	for i := 0; i < typ.NumField(); i++ {
+		conn.Send("HGET", key, typ.Field(i).Name)
+		switch val.Field(i).Interface().(type) {
+		case time.Time:
+			timeField = append(timeField, i)
+			var str string
+			vals = append(vals, &str)
+		default:
+			vals = append(vals, val.Field(i).Addr().Interface())
+		}
+	}
+
+	reply, err := redis.Values(conn.Do("EXEC"))
+	if err != nil {
+		return err
+	}
+	if _, err := redis.Scan(reply, vals...); err == nil {
+		var n int
+		for _, n = range timeField {
+			if time, e := time.Parse(time.RFC1123Z, string(reply[n].([]byte))); e == nil {
+				val.Field(n).Set(reflect.ValueOf(time))
+			}
+		}
+		return nil
+	} else {
+		return err
+	}
 }

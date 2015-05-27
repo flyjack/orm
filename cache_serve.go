@@ -20,6 +20,7 @@ func SetCacheAddress(keys []string, password string) {
 	cacheconn = NewRedisCache(keys[0], password)
 
 }
+
 func DelCacheAddress(key string) {
 
 }
