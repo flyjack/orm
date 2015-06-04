@@ -205,11 +205,8 @@ func (self *CacheModule) Incrby(key string, val int64) (ret int64, err error) {
 
 	ret, _ = self.Cache.Hincrby(self.cachekey, key, val)
 	if val != 0 {
-		if val >= 0 {
-			self.Object.Change(key+"__add", val)
-		} else {
-			self.Object.Change(key+"__sub", val)
-		}
+
+		self.Object.Change(key+"__add", val)
 
 		err = self.setModeField(key, ret)
 	}
@@ -280,29 +277,7 @@ func (self *CacheModule) Set(key string, value interface{}) (err error) {
 
 func (self *CacheModule) Save() (isnew bool, id int64, err error) {
 	/// 实现， 直接通过 self.xxx= xxx 这样的数据变动支持
-	/*
-		valof := reflect.ValueOf(self.mode).Elem()
-		typof := reflect.TypeOf(self.mode).Elem()
-		for i := 0; i < valof.NumField(); i++ {
-			if typof.Field(i).Tag.Get("field") != "" &&
-				valof.Field(i).Interface() != self.modefield[typof.Field(i).Name] {
 
-				switch valof.Field(i).Kind() {
-				case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
-					self.Set(typof.Field(i).Name, valof.Field(i).Uint())
-				case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
-					self.Set(typof.Field(i).Name, valof.Field(i).Int())
-				case reflect.String:
-					self.Set(typof.Field(i).Name, valof.Field(i).String())
-				}
-
-				Debug.Println("============= \\ ", self.cachekey, typof.Field(i).Name, valof.Field(i).Interface(), self.modefield[typof.Field(i).Name])
-			}
-		}
-		defer func() {
-			self.modefield = nil
-		}()
-	*/
 	upgradecache := false
 	if self.hasRow && len(self.set) == 0 {
 		upgradecache = true
@@ -541,7 +516,6 @@ func (self *CacheModule) where2Key() string {
 func (self *CacheModule) fieldToByte(value interface{}) (str []byte) {
 	typ := reflect.TypeOf(value)
 	val := reflect.ValueOf(value)
-
 	switch typ.Kind() {
 	case reflect.Uint32, reflect.Uint64, reflect.Uint, reflect.Uint8, reflect.Uint16:
 		if val.Uint() <= 0 {
