@@ -27,6 +27,9 @@ func SetCachePrefix(str string) {
 	cache_prefix = []byte(str)
 
 }
+func GetCachePrefix() []byte {
+	return cache_prefix
+}
 func SetDefaultCacheDb(db int) {
 	cache_db = db
 }
@@ -268,7 +271,7 @@ func (self *CacheModule) Set(key string, value interface{}) (err error) {
 	if over == false {
 		return errors.New(self.cachekey + " hset " + key + " error !")
 	}
-	self.Object.Change(key, val)
+	self.Object.Change(key, value)
 	//self.modefield[key] = value
 	//go self.Object.Change(key, val).Save()
 
@@ -376,7 +379,6 @@ func (self *CacheModule) AllOnCache(out interface{}) error {
 func (self *CacheModule) All(out interface{}) error {
 
 	if err := self.AllOnCache(out); err == nil && reflect.ValueOf(out).Elem().Len() > 0 {
-
 		return err
 	} else {
 		//self.Object.All()

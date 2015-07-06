@@ -8,6 +8,8 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
+var Pool *redis.Pool = nil
+
 func NewRedisCacheWithRedisPool(pool *redis.Pool) *RedisCache {
 	return &RedisCache{pool, nil}
 }
@@ -15,18 +17,21 @@ func SetCacheWithPool(pool *redis.Pool) {
 	cacheconn = &RedisCache{pool, nil}
 }
 
+func GetCachePool() Cache {
+	return cacheconn
+}
+
 func NewRedisCache(REDIS_HOST, PASSWD string) *RedisCache {
-	client := &redis.Pool{
-		MaxIdle:     5,                 //最大的空闲连接数，表示即使没有redis连接时依然可以保持N个空闲的连接，而不被清除，随时处于待命状态。
-		MaxActive:   50,                //最大的激活连接数，表示同时最多有N个连接
+	Pool = &redis.Pool{
+		MaxIdle:     50,                //最大的空闲连接数，表示即使没有redis连接时依然可以保持N个空闲的连接，而不被清除，随时处于待命状态。
+		MaxActive:   10240,             //最大的激活连接数，表示同时最多有N个连接
 		IdleTimeout: 180 * time.Second, //最大的空闲连接等待时间，超过此时间后，空闲连接将被关闭
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial("tcp", REDIS_HOST)
 			if err != nil {
-				panic(err)
 				return nil, err
 			}
-			if PASSWD != "" && len(PASSWD) >0 {
+			if PASSWD != "" && len(PASSWD) > 0 {
 				if _, err := c.Do("AUTH", PASSWD); err != nil {
 					c.Close()
 					return nil, err
@@ -37,7 +42,7 @@ func NewRedisCache(REDIS_HOST, PASSWD string) *RedisCache {
 			return c, nil
 		},
 	}
-	return &RedisCache{client, nil}
+	return &RedisCache{Pool, nil}
 }
 
 type RedisCache struct {

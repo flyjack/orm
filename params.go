@@ -212,9 +212,8 @@ func (self *Params) One(vals ...interface{}) error {
 		return err
 	default:
 		self.hasRow = true
+		return nil
 	}
-
-	return nil
 }
 func (self *Params) Delete() (res sql.Result, err error) {
 
