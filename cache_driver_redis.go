@@ -75,12 +75,7 @@ func (c *RedisCache) Get(key string) ([]byte, error) {
 func (c *RedisCache) Keys(key string) (keys []string, err error) {
 	conn := c.ConnGet()
 	defer c.ConnClose()
-	var k []interface{}
-	k, err = redis.Values(conn.Do("KEYS", key))
-	keys = make([]string, len(k))
-	for n, key := range k {
-		keys[n] = string(key.([]uint8))
-	}
+	keys, err = redis.Strings(conn.Do("KEYS", key))
 	return
 }
 func (c *RedisCache) Incrby(key string, n int64) (int64, error) {
