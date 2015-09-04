@@ -24,9 +24,9 @@ func (self *CacheRows) Next() bool {
 		self.index = self.index + 1
 		self.keys = self.keys[len(self.keys):]
 	}()
+
 	if len(self.keys) > self.index {
 		self.key = self.keys[self.index]
-
 		return true
 	} else {
 		return false
@@ -41,10 +41,11 @@ func (self *CacheRows) Close() error {
 
 func (self *CacheRows) Scan(mode Module) error {
 	typ := reflect.TypeOf(mode).Elem()
-	val := reflect.New(typ).Elem()
+	val := reflect.ValueOf(mode).Elem()
 
 	err := self.cache.key2Mode(self.key, typ, val)
 	if err != nil {
+		Error.Println(err)
 		return err
 	}
 	m := CacheHook{}
@@ -83,9 +84,10 @@ func (self *ModeRows) Scan(mode Module) (err error) {
 	defer func() {
 		self.val = self.val[len(self.val):]
 	}()
-	m := reflect.New(reflect.TypeOf(mode).Elem()).Elem()
+	m := reflect.ValueOf(mode).Elem()
+	typ := reflect.TypeOf(mode).Elem()
 	for i := 0; i < m.NumField(); i++ {
-		if name := m.Type().Field(i).Tag.Get("field"); len(name) > 0 {
+		if name := typ.Field(i).Tag.Get("field"); len(name) > 0 {
 			self.val = append(self.val, m.Field(i).Addr().Interface())
 		}
 	}

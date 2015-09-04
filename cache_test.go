@@ -28,8 +28,18 @@ type userB struct {
 	Lingshi int64  `field:"Lingshi"`
 	//LogoutTime time.Time `field:"updated_at"`
 }
+type userA struct {
+	DBHook
+	Uid     int64  `field:"Id" index:"pk"  cache:"user" `
+	Alias   string `field:"Alias"`
+	Lingshi int64  `field:"Lingshi"`
+	//LogoutTime time.Time `field:"updated_at"`
+}
 
 func (self *userB) GetTableName() string {
+	return "user_disk"
+}
+func (self *userA) GetTableName() string {
 	return "user_disk"
 }
 
@@ -39,7 +49,7 @@ func Test_connect(t *testing.T) {
 	b := new(userB)
 
 	users := []*userB{}
-	b.Objects(b, "xiyou_default").Limit(1, 10).All(&users)
+	b.Objects(b).Limit(1, 10).All(&users)
 
 	for _, user := range users {
 		t.Log(user)
@@ -58,17 +68,24 @@ func Test_connect(t *testing.T) {
 	}
 }
 
+func Test_alias(t *testing.T) {
+	OpenSyncUpdate = false
+	OpenSyncDelete = false
+	b := new(userA)
+	rows, _ := b.Objects(b).Query()
+	for rows.Next() {
+		nb := new(userA)
+		err := rows.Scan(nb)
+		t.Log(err, nb.Uid, nb.Lingshi)
+	}
+}
+
 func Test_Delete(t *testing.T) {
 	b := new(userB)
 	b.Uid = 10000
-	b.Objects(b, "xiyou_default").One()
+	b.Objects(b).One()
 	//b.Incrby("Lingshi", 1)
 	b.Delete()
-}
-
-func Test_select(t *testing.T) {
-	a := CacheModule{}
-
 }
 
 type User struct {
