@@ -70,9 +70,12 @@ type CacheModuleInteerface interface {
 	DoesNotExist() error
 }
 
-type CacheModule struct {
+type CacheModule struct{ CacheHook }
+
+type CacheHook struct {
 	Cache
-	Object
+	DBHook
+	Object        *DBHook
 	cachekey      string
 	CacheFileds   []string
 	CacheNames    []string
@@ -81,10 +84,11 @@ type CacheModule struct {
 	modefield     map[string]interface{}
 }
 
-func (self *CacheModule) Objects(mode Module, param ...string) *CacheModule {
+func (self *CacheHook) Objects(mode Module, param ...string) *CacheHook {
 	self.CacheFileds = []string{}
 	self.CacheNames = []string{}
-	self.Object.Objects(mode, param...)
+	self.DBHook.Objects(mode, param...)
+	self.Object = &self.DBHook
 	self.Lock()
 	defer self.Unlock()
 	typeOf := reflect.TypeOf(self.mode).Elem()
@@ -123,7 +127,7 @@ func (self *CacheModule) Objects(mode Module, param ...string) *CacheModule {
 	return self
 }
 
-func (self *CacheModule) Db(name string) *CacheModule {
+func (self *CacheHook) Db(name string) *CacheHook {
 	self.Params.Db(name)
 	return self
 }
@@ -153,7 +157,7 @@ func GetCacheConn(key interface{}) (address string, c Cache) {
 	return
 }
 
-func (self *CacheModule) Ca(key interface{}) *CacheModule {
+func (self *CacheHook) Ca(key interface{}) *CacheHook {
 	if use_hash_cache {
 		self.cache_address, self.Cache = GetCacheConn(key)
 		if debug_sql {
@@ -163,7 +167,7 @@ func (self *CacheModule) Ca(key interface{}) *CacheModule {
 	return self
 }
 
-func (self *CacheModule) GetCacheKey() string {
+func (self *CacheHook) GetCacheKey() string {
 
 	value := reflect.ValueOf(self.mode).Elem()
 	typeOf := reflect.TypeOf(self.mode).Elem()
@@ -182,7 +186,7 @@ func (self *CacheModule) GetCacheKey() string {
 	}
 	return string(str)
 }
-func (self *CacheModule) setModeField(field string, val interface{}) error {
+func (self *CacheHook) setModeField(field string, val interface{}) error {
 
 	typ := reflect.TypeOf(self.mode).Elem()
 
@@ -199,16 +203,16 @@ func (self *CacheModule) setModeField(field string, val interface{}) error {
 			item.SetString(val.(string))
 
 		default:
-			Error.Println("(CacheModule) setModeField", field, item.Type().Kind())
-			return errors.New("(CacheModule) setModeField type error ")
+			Error.Println("(CacheHook) setModeField", field, item.Type().Kind())
+			return errors.New("(CacheHook) setModeField type error ")
 		}
 		return nil
 	} else {
-		return errors.New("(CacheModule) setModeField field not exist")
+		return errors.New("(CacheHook) setModeField field not exist")
 	}
 }
 
-func (self *CacheModule) Incrby(key string, val int64) (ret int64, err error) {
+func (self *CacheHook) Incrby(key string, val int64) (ret int64, err error) {
 	if self.cachekey == "" {
 		self.cachekey = self.GetCacheKey()
 	}
@@ -225,13 +229,13 @@ func (self *CacheModule) Incrby(key string, val int64) (ret int64, err error) {
 	return
 }
 
-func (self *CacheModule) Incry(key string) (val int64, err error) {
+func (self *CacheHook) Incry(key string) (val int64, err error) {
 	val, err = self.Incrby(key, 1)
 
 	return
 }
 
-func (self *CacheModule) Set(key string, value interface{}) (err error) {
+func (self *CacheHook) Set(key string, value interface{}) (err error) {
 
 	b := []byte{}
 	field := reflect.ValueOf(self.mode).Elem().FieldByName(key)
@@ -285,7 +289,7 @@ func (self *CacheModule) Set(key string, value interface{}) (err error) {
 	return
 }
 
-func (self *CacheModule) Save() (isnew bool, id int64, err error) {
+func (self *CacheHook) Save() (isnew bool, id int64, err error) {
 	/// 实现， 直接通过 self.xxx= xxx 这样的数据变动支持
 
 	upgradecache := false
@@ -307,20 +311,20 @@ func (self *CacheModule) Save() (isnew bool, id int64, err error) {
 	return
 }
 
-func (self *CacheModule) Filter(name string, val interface{}) *CacheModule {
+func (self *CacheHook) Filter(name string, val interface{}) *CacheHook {
 	self.Object.Filter(name, val)
 	return self
 }
-func (self *CacheModule) Orderby(order ...string) *CacheModule {
+func (self *CacheHook) Orderby(order ...string) *CacheHook {
 	self.Object.Orderby(order...)
 	return self
 }
-func (self *CacheModule) Limit(page, step int) *CacheModule {
+func (self *CacheHook) Limit(page, step int) *CacheHook {
 	self.Object.Limit(page, step)
 	return self
 }
 
-func (self *CacheModule) Query() (Rows, error) {
+func (self *CacheHook) Query() (Rows, error) {
 	key := self.getKey()
 	keys, err := self.Keys(key)
 	if err != nil {
@@ -346,14 +350,14 @@ func (self *CacheModule) Query() (Rows, error) {
 
 }
 
-func (self *CacheModule) AllOnCache(out interface{}) error {
+func (self *CacheHook) AllOnCache(out interface{}) error {
 	defer func() {
 		val := reflect.ValueOf(out).Elem()
 		for i := 0; i < val.Len(); i++ {
-			if val.Index(i).Elem().FieldByName("CacheModule").FieldByName("Cache").IsNil() {
-				m := CacheModule{}
+			if val.Index(i).Elem().FieldByName("CacheHook").FieldByName("Cache").IsNil() {
+				m := CacheHook{}
 				m.Objects(val.Index(i).Addr().Interface().(Module), self.DbName).Existed()
-				val.Index(i).Elem().FieldByName("CacheModule").Set(reflect.ValueOf(m))
+				val.Index(i).Elem().FieldByName("CacheHook").Set(reflect.ValueOf(m))
 			}
 		}
 	}()
@@ -410,7 +414,7 @@ func (self *CacheModule) AllOnCache(out interface{}) error {
 		return err
 	}
 }
-func (self *CacheModule) All(out interface{}) error {
+func (self *CacheHook) All(out interface{}) error {
 
 	if err := self.AllOnCache(out); err == nil && reflect.ValueOf(out).Elem().Len() > 0 {
 		return err
@@ -423,11 +427,11 @@ func (self *CacheModule) All(out interface{}) error {
 
 			val := reflect.ValueOf(out).Elem()
 			for i := 0; i < val.Len(); i++ {
-				if val.Index(i).Elem().FieldByName("CacheModule").FieldByName("Cache").IsNil() {
-					m := CacheModule{}
+				if val.Index(i).Elem().FieldByName("CacheHook").FieldByName("Cache").IsNil() {
+					m := CacheHook{}
 					m.Objects(val.Index(i).Interface().(Module), self.DbName).Existed()
 					m.SaveToCache()
-					val.Index(i).Elem().FieldByName("CacheModule").Set(reflect.ValueOf(m))
+					val.Index(i).Elem().FieldByName("CacheHook").Set(reflect.ValueOf(m))
 				}
 			}
 
@@ -438,7 +442,7 @@ func (self *CacheModule) All(out interface{}) error {
 		}
 	}
 }
-func (self *CacheModule) Delete() (err error) {
+func (self *CacheHook) Delete() (err error) {
 	err = self.DeleteOnCache()
 	if _, err = self.Object.Delete(); err != nil {
 		return
@@ -446,7 +450,7 @@ func (self *CacheModule) Delete() (err error) {
 
 	return
 }
-func (self *CacheModule) DeleteOnCache() error {
+func (self *CacheHook) DeleteOnCache() error {
 	if len(self.cachekey) <= 0 {
 		self.cachekey = self.getKey()
 	}
@@ -456,7 +460,7 @@ func (self *CacheModule) DeleteOnCache() error {
 
 	return nil
 }
-func (self *CacheModule) OneOnCache() error {
+func (self *CacheHook) OneOnCache() error {
 	key := self.getKey()
 
 	self.cachekey = key
@@ -490,7 +494,7 @@ func (self *CacheModule) OneOnCache() error {
 	return nil
 }
 
-func (self *CacheModule) One() error {
+func (self *CacheHook) One() error {
 
 	if err := self.OneOnCache(); err != nil {
 		//return errors.New("key " + key + " not exists!")
@@ -507,21 +511,21 @@ func (self *CacheModule) One() error {
 	}
 	return nil
 }
-func (self *CacheModule) CountOnCache() (int64, error) {
+func (self *CacheHook) CountOnCache() (int64, error) {
 	if keys, err := self.Cache.Keys(self.getKey()); err == nil {
 		return int64(len(keys)), nil
 	} else {
 		return 0, err
 	}
 }
-func (self *CacheModule) Count() (int64, error) {
+func (self *CacheHook) Count() (int64, error) {
 	if keys, err := self.Cache.Keys(self.getKey()); err == nil && len(keys) > 0 {
 		return int64(len(keys)), nil
 	}
 	return self.Object.Count()
 }
 
-func (self *CacheModule) getKey() string {
+func (self *CacheHook) getKey() string {
 	key := ""
 	if len(self.where) > 0 {
 		key = self.where2Key()
@@ -530,7 +534,7 @@ func (self *CacheModule) getKey() string {
 	}
 	return key
 }
-func (self *CacheModule) where2Key() string {
+func (self *CacheHook) where2Key() string {
 	str := cache_prefix
 	str = append(str, []byte(self.cache_prefix)...)
 	for index, field := range self.CacheFileds {
@@ -549,7 +553,7 @@ func (self *CacheModule) where2Key() string {
 	return string(str)
 }
 
-func (self *CacheModule) fieldToByte(value interface{}) (str []byte) {
+func (self *CacheHook) fieldToByte(value interface{}) (str []byte) {
 	typ := reflect.TypeOf(value)
 	val := reflect.ValueOf(value)
 	switch typ.Kind() {
@@ -593,7 +597,7 @@ func (self *CacheModule) fieldToByte(value interface{}) (str []byte) {
 	return
 }
 
-func (self *CacheModule) key2Mode(key string) reflect.Value {
+func (self *CacheHook) key2Mode(key string) reflect.Value {
 	typ := reflect.TypeOf(self.mode).Elem()
 	val := reflect.New(typ).Elem()
 
@@ -602,13 +606,13 @@ func (self *CacheModule) key2Mode(key string) reflect.Value {
 	if err != nil {
 		Error.Println(err.Error())
 	}
-	mode := CacheModule{}
+	mode := CacheHook{}
 	mode.Objects(val.Addr().Interface().(Module), self.DbName).Existed()
-	val.FieldByName("CacheModule").Set(reflect.ValueOf(mode))
+	val.FieldByName("CacheHook").Set(reflect.ValueOf(mode))
 	return val
 }
 
-func (self CacheModule) SaveToCache() error {
+func (self CacheHook) SaveToCache() error {
 	key := self.GetCacheKey()
 
 	maping := map[string]interface{}{}

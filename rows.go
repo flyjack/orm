@@ -47,9 +47,9 @@ func (self *CacheRows) Scan(mode Module) error {
 	if err != nil {
 		return err
 	}
-	m := CacheModule{}
+	m := CacheHook{}
 	m.Objects(val.Addr().Interface().(Module), self.dbName).Existed()
-	val.FieldByName("CacheModule").Set(reflect.ValueOf(m))
+	val.FieldByName("CacheHook").Set(reflect.ValueOf(m))
 
 	return nil
 }
@@ -93,17 +93,17 @@ func (self *ModeRows) Scan(mode Module) (err error) {
 	if err != nil {
 		return
 	}
-	if field := m.FieldByName("CacheModule"); field.IsValid() {
-		obj := CacheModule{}
+	if field := m.FieldByName("CacheHook"); field.IsValid() {
+		obj := CacheHook{}
 		obj.Objects(m.Addr().Interface().(Module), self.dbName).Existed()
 		obj.SaveToCache()
 		field.Set(reflect.ValueOf(obj))
 
 	} else {
 
-		obj := Object{} //Object(m.Interface().(Module))
+		obj := DBHook{} //Object(m.Interface().(Module))
 		obj.Objects(m.Addr().Interface().(Module), self.dbName).Existed()
-		m.FieldByName("Object").Set(reflect.ValueOf(obj))
+		m.FieldByName("DBHook").Set(reflect.ValueOf(obj))
 	}
 	return
 }

@@ -22,7 +22,9 @@ type FuncParam struct {
 	val  func(interface{}) bool
 }
 
-type Object struct {
+type Object struct{ DBHook }
+
+type DBHook struct {
 	sync.RWMutex
 	Params
 	mode      Module
@@ -30,11 +32,11 @@ type Object struct {
 	DbName    string
 }
 
-func (self *Object) DoesNotExist() error {
+func (self *DBHook) DoesNotExist() error {
 	return ErrDoesNotExist
 }
 
-func (self *Object) Objects(mode Module, params ...string) *Object {
+func (self *DBHook) Objects(mode Module, params ...string) *DBHook {
 	self.Lock()
 	defer self.Unlock()
 	if len(params) == 1 && len(params[0]) > 1 {
@@ -59,7 +61,7 @@ func (self *Object) Objects(mode Module, params ...string) *Object {
 	return self
 }
 
-func (self *Object) Existed() *Object {
+func (self *DBHook) Existed() *DBHook {
 	self.Lock()
 	defer self.Unlock()
 	self.hasRow = true
@@ -69,7 +71,7 @@ func (self *Object) Existed() *Object {
 //修改数据
 // name 结构字段名称
 // val 结构数据
-func (self *Object) Set(name string, val interface{}) *Object {
+func (self *DBHook) Set(name string, val interface{}) *DBHook {
 	self.Lock()
 	defer self.Unlock()
 	typ := reflect.TypeOf(self.mode).Elem()
@@ -84,14 +86,14 @@ func (self *Object) Set(name string, val interface{}) *Object {
 	return self
 }
 
-func (self *Object) Change(name string, val interface{}) *Object {
+func (self *DBHook) Change(name string, val interface{}) *DBHook {
 	return self.Set(name, val)
 }
 
 //条件筛选
 // name 结构字段名称
 // val 需要过滤的数据值
-func (self *Object) Filter(name string, val interface{}) *Object {
+func (self *DBHook) Filter(name string, val interface{}) *DBHook {
 	self.Lock()
 	defer self.Unlock()
 	switch val.(type) {
@@ -111,7 +113,7 @@ func (self *Object) Filter(name string, val interface{}) *Object {
 
 	return self
 }
-func (self *Object) FilterOr(name string, val interface{}) *Object {
+func (self *DBHook) FilterOr(name string, val interface{}) *DBHook {
 	self.Lock()
 	defer self.Unlock()
 	typ := reflect.TypeOf(self.mode).Elem()
@@ -127,7 +129,7 @@ func (self *Object) FilterOr(name string, val interface{}) *Object {
 }
 
 // Filter 的一次传入版本 ， 不建议使用 , 因为map 循序不可控
-func (self *Object) Filters(filters map[string]interface{}) *Object {
+func (self *DBHook) Filters(filters map[string]interface{}) *DBHook {
 	for k, v := range filters {
 		self.Filter(k, v)
 	}
@@ -136,7 +138,7 @@ func (self *Object) Filters(filters map[string]interface{}) *Object {
 
 // Order by 排序 ，
 // Field__asc Field__desc
-func (self *Object) Orderby(names ...string) *Object {
+func (self *DBHook) Orderby(names ...string) *DBHook {
 	typ := reflect.TypeOf(self.mode).Elem()
 	for i, name := range names {
 		fieldName := strings.Split(name, "__")
@@ -152,7 +154,7 @@ func (self *Object) Orderby(names ...string) *Object {
 }
 
 // 分页支持
-func (self *Object) Limit(page, steq int) *Object {
+func (self *DBHook) Limit(page, steq int) *DBHook {
 	self.Lock()
 	defer self.Unlock()
 	self.Params.limit = [2]int{page, steq}
@@ -160,20 +162,20 @@ func (self *Object) Limit(page, steq int) *Object {
 }
 
 //选择数据库
-func (self *Object) Db(name string) *Object {
+func (self *DBHook) Db(name string) *DBHook {
 	self.Params.Db(name)
 	return self
 }
 
 // 计算数量
-func (self *Object) Count() (int64, error) {
+func (self *DBHook) Count() (int64, error) {
 	self.RLock()
 	defer self.RUnlock()
 	return self.Params.Count()
 }
 
 //删除数据
-func (self *Object) Delete() (int64, error) {
+func (self *DBHook) Delete() (int64, error) {
 	self.Lock()
 	defer self.Unlock()
 	self.autoWhere()
@@ -193,7 +195,7 @@ func (self *Object) Delete() (int64, error) {
 
 }
 
-func (self Object) printModel(name string) {
+func (self DBHook) printModel(name string) {
 	valus := reflect.ValueOf(self.mode).Elem()
 	Debug.Println("PRINT MODE =======================================", name, " Start ")
 	for i := 0; i < valus.NumField(); i++ {
@@ -203,7 +205,7 @@ func (self Object) printModel(name string) {
 }
 
 //更新活添加
-func (self *Object) Save() (bool, int64, error) {
+func (self *DBHook) Save() (bool, int64, error) {
 	self.Lock()
 	defer self.Unlock()
 	valus := reflect.ValueOf(self.mode).Elem()
@@ -248,7 +250,7 @@ func (self *Object) Save() (bool, int64, error) {
 	return isNew, id, err
 }
 
-func (self *Object) autoWhere() {
+func (self *DBHook) autoWhere() {
 	valus := reflect.ValueOf(self.mode).Elem()
 	if len(self.Params.where) == 0 {
 		for i := 0; i < valus.NumField(); i++ {
@@ -284,7 +286,7 @@ func (self *Object) autoWhere() {
 	}
 
 }
-func (self *Object) Query() (Rows, error) {
+func (self *DBHook) Query() (Rows, error) {
 	self.autoWhere()
 	rows, err := self.Params.All()
 	if err != nil {
@@ -294,7 +296,7 @@ func (self *Object) Query() (Rows, error) {
 }
 
 //查找数据
-func (self *Object) All(out interface{}) error {
+func (self *DBHook) All(out interface{}) error {
 	self.Lock()
 	defer self.Unlock()
 	if out == nil {
@@ -324,9 +326,9 @@ func (self *Object) All(out interface{}) error {
 				continue
 			}
 			//m.Field(0).MethodByName("Objects").Call([]reflect.Value{m.Addr()})
-			obj := Object{} //Object(m.Interface().(Module))
+			obj := DBHook{} //DBHook(m.Interface().(Module))
 			obj.Objects(m.Addr().Interface().(Module), self.DbName).Existed()
-			m.FieldByName("Object").Set(reflect.ValueOf(obj))
+			m.FieldByName("DBHook").Set(reflect.ValueOf(obj))
 			add := true
 			for _, param := range self.funcWhere {
 
@@ -348,7 +350,7 @@ func (self *Object) All(out interface{}) error {
 }
 
 //提取一个数据
-func (self *Object) One() error {
+func (self *DBHook) One() error {
 	self.RLock()
 	defer self.RUnlock()
 	self.autoWhere()
@@ -376,7 +378,7 @@ func (self *Object) One() error {
 	}
 }
 
-func (self *Object) Field(name string) reflect.Value {
+func (self *DBHook) Field(name string) reflect.Value {
 	valMode := reflect.ValueOf(self.mode).Elem()
 	return valMode.FieldByName(name)
 }

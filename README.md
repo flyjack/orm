@@ -34,7 +34,7 @@ postgree "github.com/lib/pq"
 
     //建立一个数据模型。 
 	type UserInfo struct**** {
-		orm.Object
+		orm.DBHook
 		Id int64 `field:"id" auto:"true" index:"pk"`
 		Name string `field:"username"`
 		Passwd string `field:"password"`
@@ -65,7 +65,7 @@ postgree "github.com/lib/pq"
 	import _ "github.com/go-sql-driver/mysql"
 
 	type userB struct {
-		CacheModule
+		orm.CacheHook
 		Uid     int64  `field:"Id" index:"pk" cache:"user" `
 		Alias   string `field:"Alias"`
 		Money int64  `field:"money"	`

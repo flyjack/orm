@@ -4,27 +4,29 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	//"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
 func init() {
 
-	_, err := NewDatabase("default", "mysql", "happy:Cyup3EdezxW@tcp(192.168.0.50:3306)/xiyou_default?charset=utf8&parseTime=true") //"happy:passwd@tcp(127.0.0.1:3306)/mydatabase?charset=utf8&parseTime=true")
+	_, err := NewDatabase("default", "mysql", "happy:passwd@tcp(127.0.0.1:3306)/mydatabase?charset=utf8&parseTime=true")
 	if err != nil {
 		panic(err)
 	}
 	SetDebug(true)
-	UseHashCache(false)
-	SetCacheAddress([]string{"127.0.0.1:6379"})
+	AddCacheAddress("127.0.0.1:6379", "")
 	SetDefaultCacheDb(0)
+
 }
 
 type userB struct {
 	CacheModule
 	Uid     int64  `field:"Id" index:"pk"  cache:"user" `
 	Alias   string `field:"Alias"`
-	Lingshi int64  `field:"Lingshi"	`
+	Lingshi int64  `field:"Lingshi"`
+	//LogoutTime time.Time `field:"updated_at"`
 }
 
 func (self *userB) GetTableName() string {
@@ -32,31 +34,41 @@ func (self *userB) GetTableName() string {
 }
 
 func Test_connect(t *testing.T) {
-
+	OpenSyncUpdate = true
+	OpenSyncDelete = true
 	b := new(userB)
 
-	users := []userB{}
-	b.Objects(b).Limit(1, 10).All(&users)
+	users := []*userB{}
+	b.Objects(b, "xiyou_default").Limit(1, 10).All(&users)
 
 	for _, user := range users {
 		t.Log(user)
 		user.Incrby("Lingshi", 1)
-		go user.Save()
+		user.Save()
 
 		//t.Log(user.Uid, user.Lingshi)
 		//user.Incrby("Lingshi", 1)
 		//t.Log(user.Uid, user.Lingshi)
 		//go user.Save()
+		user.Delete()
 	}
-
+	for i := 0; i < 10; i++ {
+		sql := <-SqlSyncHook
+		t.Log(sql)
+	}
 }
 
-func Test_OneObj(t *testing.T) {
+func Test_Delete(t *testing.T) {
 	b := new(userB)
 	b.Uid = 10000
-	b.Objects(b).OneOnCache()
-	b.Incrby("Lingshi", 1)
-	go b.Save()
+	b.Objects(b, "xiyou_default").One()
+	//b.Incrby("Lingshi", 1)
+	b.Delete()
+}
+
+func Test_select(t *testing.T) {
+	a := CacheModule{}
+
 }
 
 type User struct {
