@@ -50,11 +50,10 @@ postgree "github.com/lib/pq"
 	
 	
 	
-	//变更Cache 列表(Redis)
+	//Cache  (Redis)
 	
-	orm.CacheConsistent.Add("127.0.0.1:6379") //添加一个redis服务地址
-	orm.CacheConsistent.Set([]string{"127.0.0.1:6379" , "127.0.0.1:6380"})   //批量设置redis 
-	orm.CacheConsistent.Remove("127.0.0.1:6380") //删除一个地址
+	orm.AddCacheAddress("127.0.0.1:6379","PASSWD") //缓存服务器地址 
+	
 	
 	
 
@@ -73,9 +72,13 @@ postgree "github.com/lib/pq"
 	}
 
 	func main(){
-		orm.CacheConsistent.Add("127.0.0.1:6379")  //添加多个redis服务器
+		orm.AddCacheAddress("127.0.0.1:6379",PASSWD)  //添加多个redis服务器
 		orm.SetCachePrefix("nado") //默认nado .  将作为redis key 的前缀
-		NewDatabase("default", "mysql", "happy:passwd@tcp(127.0.0.1:3306)/mydatabase?charset=utf8&parseTime=true")
+		orm.NewDatabase("default", "mysql", "happy:passwd@tcp(127.0.0.1:3306)/mydatabase?charset=utf8&parseTime=true")
+		
+		orm.SetCachePrefix("nado")  //cache 前缀。 
+		orm.SetDebug(false)   //true 是否开启调试模式
+
 
 
 		b := new(userB)
