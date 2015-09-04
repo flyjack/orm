@@ -22,39 +22,28 @@ type FuncParam struct {
 	val  func(interface{}) bool
 }
 
-func Objects(mode Module) Object {
-
-	typ := reflect.TypeOf(mode).Elem()
-	vals := []string{}
-	for i := 0; i < typ.NumField(); i++ {
-		if field := typ.Field(i).Tag.Get("field"); len(field) > 0 {
-			vals = append(vals, field)
-		}
-	}
-
-	obj := Object{}
-	obj.SetTable(mode.GetTableName())
-	obj.mode = mode
-	obj.Params.Init()
-	obj.Params.SetField(vals...)
-	return obj
-}
-
 type Object struct {
 	sync.RWMutex
 	Params
 	mode      Module
 	funcWhere []FuncParam
+	DbName    string
 }
 
 func (self *Object) DoesNotExist() error {
 	return ErrDoesNotExist
 }
 
-func (self *Object) Objects(mode Module) *Object {
+func (self *Object) Objects(mode Module, params ...string) *Object {
 	self.Lock()
 	defer self.Unlock()
-	self.SetTable(mode.GetTableName())
+	if len(params) == 1 && len(params[0]) > 1 {
+		self.DbName = params[0]
+		self.SetTable(self.DbName + "." + mode.GetTableName())
+	} else {
+		self.SetTable(mode.GetTableName())
+	}
+
 	self.Init()
 	self.funcWhere = self.funcWhere[len(self.funcWhere):]
 	typ := reflect.TypeOf(mode).Elem()
@@ -69,6 +58,7 @@ func (self *Object) Objects(mode Module) *Object {
 	self.mode = mode
 	return self
 }
+
 func (self *Object) Existed() *Object {
 	self.Lock()
 	defer self.Unlock()
@@ -189,6 +179,10 @@ func (self *Object) Delete() (int64, error) {
 	self.autoWhere()
 	if len(self.Params.where) > 0 {
 		res, err := self.Params.Delete()
+		if OpenSyncDelete {
+			return 0, nil
+		}
+
 		if err != nil {
 			return 0, err
 		}
@@ -290,6 +284,14 @@ func (self *Object) autoWhere() {
 	}
 
 }
+func (self *Object) Query() (Rows, error) {
+	self.autoWhere()
+	rows, err := self.Params.All()
+	if err != nil {
+		return nil, err
+	}
+	return &ModeRows{rows: rows, dbName: self.DbName}, nil
+}
 
 //查找数据
 func (self *Object) All(out interface{}) error {
@@ -299,9 +301,10 @@ func (self *Object) All(out interface{}) error {
 		return errors.New("params can't nil ")
 	}
 	self.autoWhere()
-	if rows, err := self.Params.All(); err == nil {
-		defer rows.Close()
+	rows, err := self.Params.All()
 
+	if err == nil {
+		defer rows.Close()
 		val := []interface{}{}
 		value := reflect.ValueOf(out).Elem()
 
@@ -322,7 +325,7 @@ func (self *Object) All(out interface{}) error {
 			}
 			//m.Field(0).MethodByName("Objects").Call([]reflect.Value{m.Addr()})
 			obj := Object{} //Object(m.Interface().(Module))
-			obj.Objects(m.Addr().Interface().(Module)).Existed()
+			obj.Objects(m.Addr().Interface().(Module), self.DbName).Existed()
 			m.FieldByName("Object").Set(reflect.ValueOf(obj))
 			add := true
 			for _, param := range self.funcWhere {

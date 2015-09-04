@@ -21,11 +21,12 @@ func GetCachePool() Cache {
 	return cacheconn
 }
 
+// 新建 Redis 连接
 func NewRedisCache(REDIS_HOST, PASSWD string) *RedisCache {
 	Pool = &redis.Pool{
-		MaxIdle:     50,                //最大的空闲连接数，表示即使没有redis连接时依然可以保持N个空闲的连接，而不被清除，随时处于待命状态。
-		MaxActive:   10240,             //最大的激活连接数，表示同时最多有N个连接
-		IdleTimeout: 180 * time.Second, //最大的空闲连接等待时间，超过此时间后，空闲连接将被关闭
+		MaxIdle:     30,               //最大的空闲连接数，表示即使没有redis连接时依然可以保持N个空闲的连接，而不被清除，随时处于待命状态。
+		MaxActive:   300,              //最大的激活连接数，表示同时最多有N个连接
+		IdleTimeout: 30 * time.Second, //最大的空闲连接等待时间，超过此时间后，空闲连接将被关闭
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial("tcp", REDIS_HOST)
 			if err != nil {
@@ -40,6 +41,10 @@ func NewRedisCache(REDIS_HOST, PASSWD string) *RedisCache {
 			// 选择db
 			c.Do("SELECT", cache_db)
 			return c, nil
+		},
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
 		},
 	}
 	return &RedisCache{Pool}

@@ -8,13 +8,19 @@ import (
 
 var NULL_LIMIT = [2]int{0, 0}
 var databases = map[string]*Database{}
+var OpenSyncUpdate = false
+var OpenSyncDelete = false
+var SqlSyncHook = make(chan string, 1000)
 
 //读写数据库名称
 var readDbConnectName, writeDbConnectName string = "default", "default"
 
+// 读数据库名称 默认default
 func SetReadConnectName(name string) {
 	readDbConnectName = name
 }
+
+// 写数据库名称 默认default
 func SetWriteConnectName(name string) {
 	writeDbConnectName = name
 }
@@ -33,7 +39,8 @@ func (self *Database) Conn() (err error) {
 }
 
 func NewDatabase(name, driverName, dataSourceName string) (database *Database, err error) {
-	if database, ok := databases[name]; !ok {
+	var ok bool
+	if database, ok = databases[name]; !ok {
 		database = new(Database)
 		database.Name = name
 		database.DriverName = driverName
@@ -200,11 +207,17 @@ func (self *Params) One(vals ...interface{}) error {
 	//rows, err = self.db.Query(self.execSelect())
 	//	self.stmt, err = self.db.Prepare()
 	db, query := self.getReadConnect()
+
 	sqls, val := query.Select()
 	err := db.QueryRow(sqls, val...).Scan(vals...)
 	if debug_sql {
+
 		Debug.Println("select One ", sqls, val, err)
+		//		Debug.Output(3, "callback1")
+		//		Debug.Output(4, "callback2")
+		//		Debug.Output(5, "callback3")
 	}
+
 	switch {
 	case err == sql.ErrNoRows:
 		return err
@@ -222,19 +235,25 @@ func (self *Params) Delete() (res sql.Result, err error) {
 	if debug_sql {
 		Debug.Println("delete  ", sqls, val)
 	}
-	var stmt *sql.Stmt
-	stmt, err = db.Prepare(sqls)
-	if err == nil {
-		defer stmt.Close()
+	if OpenSyncDelete {
+		sqls = strings.Replace(sqls, "?", "%v", -1)
+		sqls = fmt.Sprintf(sqls, val...)
+		SqlSyncHook <- sqls
+		return nil, nil
 	} else {
-		Error.Println(err)
-		return
+		var stmt *sql.Stmt
+		stmt, err = db.Prepare(sqls)
+		if err == nil {
+			defer stmt.Close()
+		} else {
+			Error.Println(err)
+			return
+		}
+		res, err = stmt.Exec(val...)
+		if err != nil {
+			Error.Println(err)
+		}
 	}
-	res, err = stmt.Exec(val...)
-	if err != nil {
-		Error.Println(err)
-	}
-
 	return
 }
 
@@ -269,22 +288,29 @@ func (self *Params) Save() (bool, int64, error) {
 	//if n , err= self.Count();err == nil && n >0
 	if self.hasRow {
 		sqls, val := query.Update()
-		if debug_sql {
-			Debug.Println("save update ", sqls, val)
-		}
-		stmt, err = db.Prepare(sqls)
-		if err == nil {
-			defer stmt.Close()
+		if OpenSyncUpdate {
+			sqls = strings.Replace(sqls, "?", "%v", -1)
+			sqls = fmt.Sprintf(sqls, val...)
+			SqlSyncHook <- sqls
+			return false, 0, nil
 		} else {
-			return false, 0, err
-		}
-		res, err = stmt.Exec(val...)
+			if debug_sql {
+				Debug.Println("save update ", sqls, val)
+			}
+			stmt, err = db.Prepare(sqls)
+			if err == nil {
+				defer stmt.Close()
+			} else {
+				return false, 0, err
+			}
+			res, err = stmt.Exec(val...)
 
-		if err != nil {
-			return false, 0, err
+			if err != nil {
+				return false, 0, err
+			}
+			a, b := res.RowsAffected()
+			return false, a, b
 		}
-		a, b := res.RowsAffected()
-		return false, a, b
 	} else {
 		sqls, val := query.Insert()
 		if debug_sql {
@@ -294,7 +320,7 @@ func (self *Params) Save() (bool, int64, error) {
 		if err == nil {
 			defer stmt.Close()
 		} else {
-			panic(err)
+			return false, 0, err
 		}
 		res, err = stmt.Exec(val...)
 		if err != nil {

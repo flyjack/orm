@@ -10,10 +10,9 @@ func UseHashCache(b bool) {
 	use_hash_cache = b
 }
 
+// 设置 cache 地址
 func AddCacheAddress(address, password string) {
-
 	cacheconn = NewRedisCache(address, password)
-
 }
 func SetCacheAddress(keys []string, password string) {
 
@@ -40,7 +39,7 @@ type comandGetCacheConn struct {
 
 func init() {
 
-	go goCacheRuntime()
+	//go goCacheRuntime()
 
 }
 

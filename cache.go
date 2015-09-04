@@ -54,7 +54,7 @@ type Cache interface {
 }
 
 type CacheModuleInteerface interface {
-	Objects(Module) CacheModuleInteerface
+	Objects(Module, ...string) CacheModuleInteerface
 	Ca(interface{}) CacheModuleInteerface //一致性hash 默认处理方式
 	Db(string) CacheModuleInteerface      //数据库连接
 	Filter(name string, val interface{}) CacheModuleInteerface
@@ -81,15 +81,20 @@ type CacheModule struct {
 	modefield     map[string]interface{}
 }
 
-func (self *CacheModule) Objects(mode Module) *CacheModule {
+func (self *CacheModule) Objects(mode Module, param ...string) *CacheModule {
 	self.CacheFileds = []string{}
 	self.CacheNames = []string{}
-	self.Object.Objects(mode)
+	self.Object.Objects(mode, param...)
 	self.Lock()
 	defer self.Unlock()
 	typeOf := reflect.TypeOf(self.mode).Elem()
 	valOf := reflect.ValueOf(self.mode).Elem()
 	self.modefield = make(map[string]interface{}, typeOf.NumField())
+
+	if len(param) == 1 && len(param[0]) > 0 {
+		self.cache_prefix = param[0]
+		//self.DbName = param[0]
+	}
 
 	self.Cache = nil
 	for i := 0; i < typeOf.NumField(); i++ {
@@ -98,9 +103,11 @@ func (self *CacheModule) Objects(mode Module) *CacheModule {
 			self.CacheFileds = append(self.CacheFileds, field.Tag.Get("field"))
 			self.CacheNames = append(self.CacheNames, name)
 		}
+
 		if prefix := field.Tag.Get("cache_prefix"); len(prefix) > 0 {
-			self.cache_prefix = prefix
+			self.cache_prefix = self.cache_prefix + prefix
 		}
+
 		//支持分布是hash key
 		if use_hash_cache && field.Tag.Get("index") == "pk" && field.Tag.Get("distr") == "true" {
 			self.cache_address, self.Cache = GetCacheConn(valOf.Field(i).Interface())
@@ -312,13 +319,40 @@ func (self *CacheModule) Limit(page, step int) *CacheModule {
 	self.Object.Limit(page, step)
 	return self
 }
+
+func (self *CacheModule) Query() (Rows, error) {
+	key := self.getKey()
+	keys, err := self.Keys(key)
+	if err != nil {
+		return nil, err
+	}
+	if len(keys) <= 0 {
+		//return nil, errors.New(key + " not found")
+		rows, err := self.Object.Query()
+		return rows, err
+	} else {
+		sort.Sort(sort.StringSlice(keys))
+		if self.limit != NULL_LIMIT {
+			page := (self.limit[0] - 1) * self.limit[1]
+			step := self.limit[0] * self.limit[1]
+			if step > len(keys) {
+				step = len(keys)
+			}
+			keys = keys[page:step]
+		}
+
+		return &CacheRows{keys: keys, dbName: self.DbName, index: 0, cache: self.Cache}, nil
+	}
+
+}
+
 func (self *CacheModule) AllOnCache(out interface{}) error {
 	defer func() {
 		val := reflect.ValueOf(out).Elem()
 		for i := 0; i < val.Len(); i++ {
 			if val.Index(i).Elem().FieldByName("CacheModule").FieldByName("Cache").IsNil() {
 				m := CacheModule{}
-				m.Objects(val.Index(i).Addr().Interface().(Module)).Existed()
+				m.Objects(val.Index(i).Addr().Interface().(Module), self.DbName).Existed()
 				val.Index(i).Elem().FieldByName("CacheModule").Set(reflect.ValueOf(m))
 			}
 		}
@@ -391,7 +425,7 @@ func (self *CacheModule) All(out interface{}) error {
 			for i := 0; i < val.Len(); i++ {
 				if val.Index(i).Elem().FieldByName("CacheModule").FieldByName("Cache").IsNil() {
 					m := CacheModule{}
-					m.Objects(val.Index(i).Interface().(Module)).Existed()
+					m.Objects(val.Index(i).Interface().(Module), self.DbName).Existed()
 					m.SaveToCache()
 					val.Index(i).Elem().FieldByName("CacheModule").Set(reflect.ValueOf(m))
 				}
@@ -569,7 +603,7 @@ func (self *CacheModule) key2Mode(key string) reflect.Value {
 		Error.Println(err.Error())
 	}
 	mode := CacheModule{}
-	mode.Objects(val.Addr().Interface().(Module)).Existed()
+	mode.Objects(val.Addr().Interface().(Module), self.DbName).Existed()
 	val.FieldByName("CacheModule").Set(reflect.ValueOf(mode))
 	return val
 }
