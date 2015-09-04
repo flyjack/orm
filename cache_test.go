@@ -22,7 +22,7 @@ func init() {
 }
 
 type userB struct {
-	CacheModule
+	CacheHook
 	Uid     int64  `field:"Id" index:"pk"  cache:"user" `
 	Alias   string `field:"Alias"`
 	Lingshi int64  `field:"Lingshi"`

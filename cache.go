@@ -53,23 +53,6 @@ type Cache interface {
 	key2Mode(key string, typ reflect.Type, val reflect.Value) error
 }
 
-type CacheModuleInteerface interface {
-	Objects(Module, ...string) CacheModuleInteerface
-	Ca(interface{}) CacheModuleInteerface //一致性hash 默认处理方式
-	Db(string) CacheModuleInteerface      //数据库连接
-	Filter(name string, val interface{}) CacheModuleInteerface
-	GetCacheKey() string
-	Incrby(string, int64) (int64, error)
-	Incry(string) (int64, error)
-	Set(string, interface{}) error
-	Save() (bool, int64, error)
-	One() error
-	SaveToCache() error
-	All() ([]interface{}, error)
-	AllCache() ([]interface{}, error)
-	DoesNotExist() error
-}
-
 type CacheModule struct{ CacheHook }
 
 type CacheHook struct {

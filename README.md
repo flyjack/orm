@@ -17,7 +17,7 @@ sqlite3 "github.com/mattn/go-sqlite3"
 mysql "github.com/go-sql-driver/mysql"
 postgree "github.com/lib/pq"
 
-##数据库Model 建立方法
+##数据库DBHook 建立方法
 
     //引用模块
     import "github.com/server-nado/orm"
@@ -59,7 +59,7 @@ postgree "github.com/lib/pq"
 
 [更多信息>>](docs/mode.md)
 
-##新增 CacheModel 模型， 支持分布式redis作为数据库缓存。 
+##新增 CacheHook 模型， 支持分布式redis作为数据库缓存。 
 
 	import "github.com/server-nado/orm"
 	import _ "github.com/go-sql-driver/mysql"
