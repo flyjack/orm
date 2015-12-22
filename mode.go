@@ -29,7 +29,7 @@ type DBHook struct {
 	Params
 	mode      Module
 	funcWhere []FuncParam
-	DbName    string
+	dbName    string
 }
 
 func (self *DBHook) DoesNotExist() error {
@@ -40,8 +40,8 @@ func (self *DBHook) Objects(mode Module, params ...string) *DBHook {
 	self.Lock()
 	defer self.Unlock()
 	if len(params) == 1 && len(params[0]) > 1 {
-		self.DbName = params[0]
-		self.SetTable(self.DbName + "." + mode.GetTableName())
+		self.dbName = params[0]
+		self.SetTable(self.dbName + "." + mode.GetTableName())
 	} else {
 		self.SetTable(mode.GetTableName())
 	}
@@ -292,7 +292,7 @@ func (self *DBHook) Query() (Rows, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ModeRows{rows: rows, dbName: self.DbName}, nil
+	return &ModeRows{rows: rows, dbName: self.dbName}, nil
 }
 
 //查找数据
@@ -327,7 +327,7 @@ func (self *DBHook) All(out interface{}) error {
 			}
 			//m.Field(0).MethodByName("Objects").Call([]reflect.Value{m.Addr()})
 			obj := DBHook{} //DBHook(m.Interface().(Module))
-			obj.Objects(m.Addr().Interface().(Module), self.DbName).Existed()
+			obj.Objects(m.Addr().Interface().(Module), self.dbName).Existed()
 			m.FieldByName("DBHook").Set(reflect.ValueOf(obj))
 			add := true
 			for _, param := range self.funcWhere {

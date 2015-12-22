@@ -11,14 +11,14 @@ import (
 
 func init() {
 
-	_, err := NewDatabase("default", "mysql", "happy:passwd@tcp(127.0.0.1:3306)/mydatabase?charset=utf8&parseTime=true")
+	db, err := NewDatabase("default", "mysql", "root:@tcp(127.0.0.1:3306)/test?charset=utf8&parseTime=true")
 	if err != nil {
 		panic(err)
 	}
 	SetDebug(true)
 	AddCacheAddress("127.0.0.1:6379", "")
 	SetDefaultCacheDb(0)
-
+	db.Exec("create table if not exists `user_disk`(id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, Alias varchar(255) NOT NULL default '', Lingshi BIGINT NOT NULL default 0) ")
 }
 
 type userB struct {
@@ -62,7 +62,8 @@ func Test_connect(t *testing.T) {
 		//go user.Save()
 		user.Delete()
 	}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < len(users); i++ {
+		println(i)
 		sql := <-SqlSyncHook
 		t.Log(sql)
 	}

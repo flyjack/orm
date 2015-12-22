@@ -43,8 +43,8 @@ postgree "github.com/lib/pq"
 	
 	
 	//读写分离:
-	orm.NewDatabase("write-conname" , "mysql" , "user:passwd@ip/database?charset=utf8&parseTime=true")
-	orm.NewDatabase("read-conname" , "mysql" , "user:passwd@ip/database?charset=utf8&parseTime=true")
+	orm.NewDatabase("write-conname" , "mysql" , "user:passwd@tcp(ip:port)/database?charset=utf8&parseTime=true")
+	orm.NewDatabase("read-conname" , "mysql" , "user:passwd@tcp(ip:port)/database?charset=utf8&parseTime=true")
 	orm.SetWriteConnectName("write-conname")
 	orm.SetReadConnectName("read-conname")
 	
@@ -92,8 +92,15 @@ postgree "github.com/lib/pq"
 		b.Incrby("Money" , 100)
 		fmt.Println(b.Money)
 		b.Save() //不执行不会保存到数据库 只会修改redis数据。 
-
-
+   
+        //查询id小于10的所有数据
+        user := new(userB)
+        users := []*userB{}
+        if err := user.Objects(user).Filter("Uid__lt",10).All(&users); err == nil{
+            for _,u:= range users{
+                fmt.Println(u.Uid , u.Alias)
+            }
+        }
 	}
 	
 ##一些说明， 这个ORM的目的：
