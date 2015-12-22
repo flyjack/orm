@@ -80,7 +80,7 @@ func (self *CacheHook) Objects(mode Module, param ...string) *CacheHook {
 
 	if len(param) == 1 && len(param[0]) > 0 {
 		self.cache_prefix = param[0]
-		//self.DbName = param[0]
+		//self.dbName = param[0]
 	}
 
 	self.Cache = nil
@@ -328,7 +328,7 @@ func (self *CacheHook) Query() (Rows, error) {
 			keys = keys[page:step]
 		}
 
-		return &CacheRows{keys: keys, dbName: self.DbName, index: 0, cache: self.Cache}, nil
+		return &CacheRows{keys: keys, dbName: self.dbName, index: 0, cache: self.Cache}, nil
 	}
 
 }
@@ -339,7 +339,7 @@ func (self *CacheHook) AllOnCache(out interface{}) error {
 		for i := 0; i < val.Len(); i++ {
 			if val.Index(i).Elem().FieldByName("CacheHook").FieldByName("Cache").IsNil() {
 				m := CacheHook{}
-				m.Objects(val.Index(i).Addr().Interface().(Module), self.DbName).Existed()
+				m.Objects(val.Index(i).Addr().Interface().(Module), self.dbName).Existed()
 				val.Index(i).Elem().FieldByName("CacheHook").Set(reflect.ValueOf(m))
 			}
 		}
@@ -412,7 +412,7 @@ func (self *CacheHook) All(out interface{}) error {
 			for i := 0; i < val.Len(); i++ {
 				if val.Index(i).Elem().FieldByName("CacheHook").FieldByName("Cache").IsNil() {
 					m := CacheHook{}
-					m.Objects(val.Index(i).Interface().(Module), self.DbName).Existed()
+					m.Objects(val.Index(i).Interface().(Module), self.dbName).Existed()
 					m.SaveToCache()
 					val.Index(i).Elem().FieldByName("CacheHook").Set(reflect.ValueOf(m))
 				}
@@ -590,7 +590,7 @@ func (self *CacheHook) key2Mode(key string) reflect.Value {
 		Error.Println(err.Error())
 	}
 	mode := CacheHook{}
-	mode.Objects(val.Addr().Interface().(Module), self.DbName).Existed()
+	mode.Objects(val.Addr().Interface().(Module), self.dbName).Existed()
 	val.FieldByName("CacheHook").Set(reflect.ValueOf(mode))
 	return val
 }
