@@ -40,8 +40,8 @@
 
 
     //查询id小于10的所有数据
-	user:=new(UserInfo)
-	users:=[]UserInfo{}
+	user := new(UserInfo)
+	users := []*UserInfo{}
     if err:=user.Objects(user).Filter("Id__lt",10).All(&users);err==nil{
         for _,u:= range users{
             fmt.Println(u.Id , u.Passwd , u.Name)
